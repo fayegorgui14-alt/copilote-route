@@ -52,7 +52,13 @@ ol{margin:0;padding-left:1.2em;display:flex;flex-direction:column;gap:6px;color:
 .seg3{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
 .seg3 button{font:inherit;font-size:.9rem;padding:11px 6px;border-radius:10px;border:1px solid var(--line);background:transparent;color:var(--fg);cursor:pointer}
 .seg3 button[aria-pressed="true"]{background:var(--accent);color:#06101f;border-color:var(--accent);font-weight:700}
-.rec{color:#ff4d44;font-weight:800;font-size:.85rem;animation:pulse 1s infinite alternate}
+.overlay{position:fixed;inset:0;background:rgba(5,8,12,.92);display:grid;place-items:center;z-index:20;padding:16px}
+.ovbox{text-align:center;display:flex;flex-direction:column;gap:12px;align-items:center;width:100%;max-width:340px}
+.cd{font-size:5rem;font-weight:800;margin:0;line-height:1;font-variant-numeric:tabular-nums}
+.spd{white-space:nowrap;font-weight:800;font-size:1rem;font-variant-numeric:tabular-nums;background:rgba(0,0,0,.35);padding:2px 8px;border-radius:8px}
+.spd.over{background:#ff4d44;color:#fff}
+.soundbtn{position:absolute;left:50%;top:45%;transform:translate(-50%,-50%);font:inherit;font-weight:800;font-size:1.1rem;padding:18px 22px;border-radius:14px;border:0;background:#ffb23d;color:#111;z-index:5;max-width:90%}
+.rec{white-space:nowrap;color:#ff4d44;font-weight:800;font-size:.85rem;animation:pulse 1s infinite alternate}
 .player{width:100%;max-width:100%;border-radius:12px;background:#000}
 .vitem{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px 14px;display:flex;flex-direction:column;gap:8px}
 .vitem .top{display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap}
@@ -66,7 +72,8 @@ ol{margin:0;padding-left:1.2em;display:flex;flex-direction:column;gap:6px;color:
 .drive video,.drive canvas{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
 .banner{position:absolute;left:0;right:0;top:0;padding:calc(env(safe-area-inset-top,0px) + 12px) max(16px,env(safe-area-inset-right,0px)) 12px max(16px,env(safe-area-inset-left,0px));display:flex;align-items:center;gap:12px;background:rgba(0,0,0,.55)}
 .banner .lamp{width:20px;height:20px;border-radius:50%;background:var(--safe);flex:none}
-.banner b{font-size:1.3rem}
+.banner b{font-size:1.3rem;min-width:0}
+@media (max-width:420px){.banner .fps{display:none}}
 .banner .fps{margin-left:auto;font-size:.8rem;color:#ccc;font-variant-numeric:tabular-nums}
 .drive[data-level="warn"] .banner{background:rgba(160,100,0,.85)}
 .drive[data-level="warn"] .lamp{background:var(--warn)}
@@ -146,6 +153,11 @@ ol{margin:0;padding-left:1.2em;display:flex;flex-direction:column;gap:6px;color:
       <button aria-pressed="false" data-v="moto">Une moto</button>
     </div>
     <label class="switch" for="voice">Alertes vocales<input type="checkbox" id="voice" checked></label>
+    <label class="field" for="speedMax">Alerte d'excès de vitesse
+      <select id="speedMax"><option value="0">Désactivée</option><option value="30">Au-dessus de 30 km/h</option><option value="50">Au-dessus de 50 km/h (ville)</option><option value="70">Au-dessus de 70 km/h</option><option value="90">Au-dessus de 90 km/h (route)</option><option value="110">Au-dessus de 110 km/h (autoroute)</option></select>
+    </label>
+    <label class="switch" for="autoStart">Démarrer automatiquement à l'ouverture<input type="checkbox" id="autoStart"></label>
+    <p class="hint">Avec « Modes et routines » de Samsung, Copilote peut s'ouvrir tout seul quand vous branchez le chargeur de la voiture. Il démarre alors après 5 secondes.</p>
     <div class="field" hidden>Langue de la voix
       <div class="seg" id="lang">
         <button type="button" aria-pressed="true" data-l="fr">Français</button>
@@ -193,10 +205,15 @@ ol{margin:0;padding-left:1.2em;display:flex;flex-direction:column;gap:6px;color:
   <button class="btn ghost" type="button" id="videosBack">Retour</button>
 </main>
 
+<div class="overlay" id="countdown" hidden>
+  <div class="ovbox"><p class="big">Démarrage du copilote</p><p class="cd" id="cdNum">5</p><button class="btn ghost" type="button" id="cdCancel">Annuler</button></div>
+</div>
+
 <section class="drive" id="drive" data-level="safe" hidden>
   <video id="vid" playsinline muted></video>
   <canvas id="cv"></canvas>
-  <div class="banner" role="status" aria-live="assertive"><div class="lamp"></div><b id="msg">Route dégagée</b><span class="rec" id="recDot" hidden>● REC</span><span class="fps" id="fps"></span></div>
+  <div class="banner" role="status" aria-live="assertive"><div class="lamp"></div><b id="msg">Route dégagée</b><span class="rec" id="recDot" hidden>● REC</span><span class="spd" id="spd"></span><span class="fps" id="fps"></span></div>
+  <button class="soundbtn" id="soundBtn" type="button" hidden>🔊 Touchez ici pour activer le son</button>
   <div class="controls"><button class="mute" id="muteBtn">Couper le son</button><button class="stop" id="stopBtn">Arrêter</button></div>
 </section>
 
@@ -335,7 +352,9 @@ function startTrip(live){
   if(!A.configured||!live) return;
   TRIP={id:A.uid(),start:new Date().toISOString(),end:new Date().toISOString(),km:0,done:false}; lastPos=null; curPos=null;
   if(navigator.geolocation){ try{ geoWatch=navigator.geolocation.watchPosition(p=>{
-      const c={lat:p.coords.latitude,lng:p.coords.longitude,acc:p.coords.accuracy,speed:p.coords.speed}; curPos=c;
+      const c={lat:p.coords.latitude,lng:p.coords.longitude,acc:p.coords.accuracy,speed:p.coords.speed,t:p.timestamp};
+      if((c.speed==null||isNaN(c.speed))&&curPos&&curPos.t&&c.acc<=60){ const dt=(c.t-curPos.t)/1000; if(dt>0.5&&dt<15) c.speed=hav(curPos,c)*1000/dt; }
+      curPos=c; checkSpeed();
       if(c.acc>60) return;
       if(lastPos){ const d=hav(lastPos,c); if(d>0.01&&d<2) TRIP.km+=d; }
       lastPos=c;
@@ -366,11 +385,12 @@ function renderLinks(){
 async function refreshAccess(){ ACCESS=await A.access(); renderChip(); renderEndSoon(); renderLinks(); return ACCESS; }
 
 async function boot(){
-  if(!A.configured){ show("home"); document.getElementById("status").textContent="Mode démonstration : comptes non configurés."; ACCESS={status:"trial",ends_at:new Date(Date.now()+7*864e5).toISOString()}; renderChip(); return; }
+  if(!A.configured){ show("home"); document.getElementById("status").textContent="Mode démonstration : comptes non configurés."; ACCESS={status:"trial",ends_at:new Date(Date.now()+7*864e5).toISOString()}; renderChip(); setTimeout(()=>{ try{ maybeAutoStart(); }catch(e){} },800); return; }
   const s=await A.session();
   if(!s){ show("auth"); return; }
   try{ await refreshAccess(); }catch(e){ document.getElementById("status").textContent=e.message; }
   show(canDrive()?"home":"pay"); if(!canDrive()) renderPay();
+  setTimeout(()=>{ try{ maybeAutoStart(); }catch(e){} },800);
   // Annonce à la première interaction (les navigateurs bloquent le son avant)
   document.addEventListener("pointerdown",()=>announceEnd(false),{once:true});
 }
@@ -538,7 +558,8 @@ $("start").onclick=async()=>{
   }catch(e){ $("status").textContent="La caméra est refusée. Autorisez-la dans les réglages du navigateur, puis réessayez."; return; }
   vid.srcObject=stream; vid.loop=false; await vid.play().catch(()=>{});
   await enterDrive(true); endedDuringTrip=false;
-  try{ DashRec.start(stream); }catch(e){}
+  try{ DashRec.start(stream,{video:vid,info:()=>({speed:curKmh(),lat:curPos?curPos.lat:null,lng:curPos?curPos.lng:null})}); }catch(e){}
+  checkSound();
   const k=endKey(); if(k&&k.startsWith("fin_")){ say(k); setTimeout(()=>say("active"),7000); } else say("active");
 };
 $("pickBtn").onclick=async()=>{ if(await gate()) $("pick").click(); };
@@ -555,6 +576,41 @@ $("stopBtn").onclick=()=>{
 };
 $("muteBtn").onclick=()=>{muted=!muted; $("muteBtn").textContent=muted?"Remettre le son":"Couper le son"; if(muted) try{speechSynthesis.cancel();}catch(e){}};
 document.addEventListener("visibilitychange",async()=>{ if(document.visibilityState==="visible"&&running){try{wake=await navigator.wakeLock.request("screen");}catch(e){}} });
+
+/* ======== Vitesse ======== */
+let lastSpeedWarn=0, overSince=0;
+function curKmh(){ return curPos&&curPos.speed!=null&&!isNaN(curPos.speed)&&curPos.acc<=60?Math.round(curPos.speed*3.6):null; }
+function getSet(k,d){ try{ const v=localStorage.getItem(k); return v==null?d:v; }catch(e){ return d; } }
+function setSet(k,v){ try{ localStorage.setItem(k,v); }catch(e){} }
+$("speedMax").value=getSet("copilote-speed","0"); $("speedMax").onchange=()=>setSet("copilote-speed",$("speedMax").value);
+$("autoStart").checked=getSet("copilote-auto","0")==="1"; $("autoStart").onchange=()=>setSet("copilote-auto",$("autoStart").checked?"1":"0");
+function checkSpeed(){
+  if(!running) return;
+  const v=curKmh(), max=+$("speedMax").value, el=$("spd");
+  el.textContent=v==null?"":v+" km/h"; const over=max>0&&v!=null&&v>max; el.classList.toggle("over",over);
+  if(!over){ overSince=0; return; }
+  if(!overSince) overSince=Date.now();
+  // on prévient après 3 secondes d'excès, puis au maximum toutes les 30 secondes
+  if(Date.now()-overSince>3000&&Date.now()-lastSpeedWarn>30000){
+    lastSpeedWarn=Date.now(); beep(900); speak("Attention, vous roulez trop vite. Limite "+max+" kilomètres heure.");
+    if(TRIP) A.queueAlert({level:"warn",object:"speed",ttc:null,lat:curPos.lat,lng:curPos.lng,speed:v});
+  }
+}
+
+/* ======== Son : certains téléphones demandent un toucher ======== */
+function checkSound(){ setTimeout(()=>{ const blocked=!audio||audio.state!=="running"; $("soundBtn").hidden=!blocked||muted; },600); }
+$("soundBtn").onclick=()=>{ try{ audio=audio||new (window.AudioContext||window.webkitAudioContext)(); audio.resume(); }catch(e){}
+  try{ speechSynthesis.speak(new SpeechSynthesisUtterance("Son activé")); }catch(e){} try{document.documentElement.requestFullscreen();}catch(e){} $("soundBtn").hidden=true; };
+
+/* ======== Démarrage automatique à l'ouverture ======== */
+let cdTimer=null;
+function maybeAutoStart(){
+  if(!$("autoStart").checked||running||!canDrive()||$("home").hidden) return;
+  let n=5; $("cdNum").textContent=n; $("countdown").hidden=false;
+  cdTimer=setInterval(()=>{ n--; $("cdNum").textContent=n; if(n<=0){ clearInterval(cdTimer); $("countdown").hidden=true; $("start").click(); } },1000);
+}
+$("cdCancel").onclick=()=>{ clearInterval(cdTimer); $("countdown").hidden=true; };
+document.addEventListener("visibilitychange",()=>{ if(document.visibilityState==="visible") setTimeout(maybeAutoStart,800); });
 
 /* ======== Réglages et écran « Mes vidéos » ======== */
 const REC_HELP={off:"Aucune vidéo n'est enregistrée.",dangers:"Recommandé : une vidéo d'environ 20 à 30 secondes est gardée à chaque alerte « FREINEZ », avec les secondes d'avant. Prend peu de place.",trajet:"Tout le trajet est filmé, par morceaux d'une minute. Les plus anciens trajets sont effacés quand l'espace maximum est atteint. Les vidéos de danger sont gardées en priorité."};

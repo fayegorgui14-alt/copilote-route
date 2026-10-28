@@ -55,6 +55,36 @@
   let lastSeg = null;           // dernier segment terminé (gardé en mémoire, pour avoir les secondes AVANT un danger)
   let dangerPending = null;     // { eventId, object, keepNext }
   let tripEventId = null;
+  // Incrustation : date, heure, vitesse et position GPS dessinées sur la vidéo
+  let canvas = null, cctx = null, drawTimer = null, srcVideo = null, infoFn = null;
+  function two(n) { return String(n).padStart(2, "0"); }
+  function drawFrame() {
+    if (!srcVideo || !cctx || srcVideo.readyState < 2) return;
+    const W = canvas.width, H = canvas.height;
+    try { cctx.drawImage(srcVideo, 0, 0, W, H); } catch (e) { return; }
+    const d = new Date(), inf = (infoFn && infoFn()) || {};
+    const txt = `${two(d.getDate())}/${two(d.getMonth() + 1)}/${d.getFullYear()} ${two(d.getHours())}:${two(d.getMinutes())}:${two(d.getSeconds())}`
+      + (inf.speed != null ? `  ·  ${inf.speed} km/h` : "")
+      + (inf.lat != null ? `  ·  ${inf.lat.toFixed(5)}, ${inf.lng.toFixed(5)}` : "  ·  GPS…");
+    const fs = Math.max(14, Math.round(H / 26)), pad = Math.round(fs * 0.45);
+    cctx.font = `700 ${fs}px system-ui, sans-serif`;
+    cctx.fillStyle = "rgba(0,0,0,.55)"; cctx.fillRect(0, H - fs - pad * 2, W, fs + pad * 2);
+    cctx.fillStyle = "#fff"; cctx.textBaseline = "middle"; cctx.fillText(txt, pad, H - pad - fs / 2);
+    const brand = "Copilote Route"; const bw = cctx.measureText(brand).width;
+    if (bw + cctx.measureText(txt).width + pad * 4 < W) { cctx.fillStyle = "#ffb23d"; cctx.fillText(brand, W - bw - pad, H - pad - fs / 2); }
+  }
+  function overlayStream(camStream) {
+    try {
+      if (!srcVideo || !HTMLCanvasElement.prototype.captureStream) return camStream;
+      const tr = camStream.getVideoTracks()[0], st = tr && tr.getSettings ? tr.getSettings() : {};
+      const w = st.width || srcVideo.videoWidth || 1280, h = st.height || srcVideo.videoHeight || 720;
+      const scale = Math.min(1, 960 / Math.max(w, h));
+      canvas = document.createElement("canvas"); canvas.width = Math.round(w * scale); canvas.height = Math.round(h * scale);
+      cctx = canvas.getContext("2d"); drawFrame();
+      drawTimer = setInterval(drawFrame, 1000 / 15);
+      return canvas.captureStream(15);
+    } catch (e) { return camStream; }
+  }
   const SEG_MS = () => (settings.mode === "trajet" ? 60000 : 12000);
 
   function pickMime() { for (const m of MIMES) { try { if (window.MediaRecorder && MediaRecorder.isTypeSupported(m)) return m; } catch (e) {} } return ""; }
@@ -103,17 +133,21 @@
     if (lastSeg && Date.now() - lastSeg.end < 15000) { try { await saveSeg(lastSeg, eventId, "danger", object); } catch (e) {} }
   }
 
-  function start(mediaStream) {
+  function start(mediaStream, opts) {
     stop();
     if (settings.mode === "off" || !window.MediaRecorder || !mediaStream) { onState(); return false; }
-    stream = mediaStream; mime = pickMime(); active = true; lastSeg = null; dangerPending = null; tripEventId = uid();
+    srcVideo = opts && opts.video || null; infoFn = opts && opts.info || null;
+    stream = overlayStream(mediaStream); mime = pickMime(); active = true; lastSeg = null; dangerPending = null; tripEventId = uid();
     try { navigator.storage && navigator.storage.persist && navigator.storage.persist(); } catch (e) {}
     startSegment(); onState(); return true;
   }
   function stop() {
     active = false; clearTimeout(segTimer);
     try { rec && rec.state !== "inactive" && rec.stop(); } catch (e) {} // le dernier segment est sauvegardé dans onstop
-    rec = null; onState();
+    rec = null; clearInterval(drawTimer); drawTimer = null;
+    // le canvas reste vivant 1 seconde pour finir le dernier morceau
+    setTimeout(() => { if (!active) { canvas = null; cctx = null; srcVideo = null; } }, 1500);
+    onState();
   }
 
   // ---------- Liste des vidéos (regroupées par événement) ----------

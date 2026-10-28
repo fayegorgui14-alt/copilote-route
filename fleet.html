@@ -79,7 +79,7 @@ select,input{font:inherit;padding:9px 12px;border-radius:9px;border:1px solid va
   <div class="kpis" id="kpis"></div>
 
   <div class="card"><h2>Chauffeurs</h2>
-    <p class="muted" style="margin:0">Le score de prudence (sur 100) baisse avec le nombre d'alertes « Freinez » et « Attention » par heure de conduite.</p>
+    <p class="muted" style="margin:0">Le score de prudence (sur 100) baisse avec le nombre d'alertes « Freinez », « Attention » et d'excès de vitesse par heure de conduite.</p>
     <div class="tablewrap"><table id="drivers"></table></div></div>
 
   <div class="card"><h2>Dernières alertes « Freinez »</h2><div class="tablewrap"><table id="alerts"></table></div></div>
@@ -125,15 +125,15 @@ function render(){
   ROWS=PEOPLE.map(u=>{
     const tr=TRIPS.filter(x=>x.user_id===u.id), al=ALERTS.filter(x=>x.user_id===u.id);
     const h=tr.reduce((s,x)=>s+(new Date(x.ended_at)-new Date(x.started_at))/36e5,0), km=tr.reduce((s,x)=>s+(x.distance_km||0),0);
-    const d=al.filter(x=>x.level==="danger").length, w=al.filter(x=>x.level==="warn").length;
+    const d=al.filter(x=>x.level==="danger").length, w=al.filter(x=>x.level==="warn"&&x.object!=="speed").length, sp=al.filter(x=>x.object==="speed").length;
     const last=tr.map(x=>x.ended_at).sort().pop();
-    return {u,h,km,d,w,s:score(h,d,w),last};
+    return {u,h,km,d,w,sp,s:score(h,d,w+sp),last};
   }).sort((a,b)=>(a.s??101)-(b.s??101));
   const H=ROWS.reduce((s,r)=>s+r.h,0), KM=ROWS.reduce((s,r)=>s+r.km,0), D=ROWS.reduce((s,r)=>s+r.d,0);
   const scored=ROWS.filter(r=>r.s!=null), avg=scored.length?Math.round(scored.reduce((s,r)=>s+r.s,0)/scored.length):null;
   const k=[["Chauffeurs",drivers.length+" / "+CO.max_drivers],["Heures de conduite",H.toFixed(1).replace(".",",")+" h"],["Distance",Math.round(KM).toLocaleString("fr-FR")+" km"],["Alertes « Freinez »",D],["Score moyen",avg==null?"—":avg+"/100"]];
   $("kpis").innerHTML=k.map(([l,v])=>`<div class="kpi"><span>${l}</span><b>${v}</b></div>`).join("");
-  $("drivers").innerHTML=ROWS.length?`<tr><th>Chauffeur</th><th>Score</th><th class="num">Heures</th><th class="num">Km</th><th class="num">Freinez</th><th class="num">Attention</th><th>Dernier trajet</th><th></th></tr>`+ROWS.map(r=>`<tr><td>${esc(r.u.full_name||"Sans nom")}${r.u.company_role==="manager"?" <span class='muted'>(responsable)</span>":""}<br><span class="muted">${A.fmtPhone(r.u.phone)}</span></td><td>${pill(r.s)}</td><td class="num">${r.h.toFixed(1).replace(".",",")}</td><td class="num">${Math.round(r.km)}</td><td class="num">${r.d}</td><td class="num">${r.w}</td><td>${dt(r.last)}</td><td>${r.u.company_role==="driver"?`<button class="btn danger" data-rm="${r.u.id}">Retirer</button>`:""}</td></tr>`).join(""):`<tr><td class="empty">Aucun chauffeur pour l'instant. Donnez le code ci-dessus à vos chauffeurs.</td></tr>`;
+  $("drivers").innerHTML=ROWS.length?`<tr><th>Chauffeur</th><th>Score</th><th class="num">Heures</th><th class="num">Km</th><th class="num">Freinez</th><th class="num">Attention</th><th class="num">Excès vitesse</th><th>Dernier trajet</th><th></th></tr>`+ROWS.map(r=>`<tr><td>${esc(r.u.full_name||"Sans nom")}${r.u.company_role==="manager"?" <span class='muted'>(responsable)</span>":""}<br><span class="muted">${A.fmtPhone(r.u.phone)}</span></td><td>${pill(r.s)}</td><td class="num">${r.h.toFixed(1).replace(".",",")}</td><td class="num">${Math.round(r.km)}</td><td class="num">${r.d}</td><td class="num">${r.w}</td><td class="num">${r.sp}</td><td>${dt(r.last)}</td><td>${r.u.company_role==="driver"?`<button class="btn danger" data-rm="${r.u.id}">Retirer</button>`:""}</td></tr>`).join(""):`<tr><td class="empty">Aucun chauffeur pour l'instant. Donnez le code ci-dessus à vos chauffeurs.</td></tr>`;
   const name=id=>{const u=PEOPLE.find(x=>x.id===id); return u?esc(u.full_name||A.fmtPhone(u.phone)):"Ancien chauffeur";};
   const dang=ALERTS.filter(a=>a.level==="danger").slice(0,50);
   $("alerts").innerHTML=dang.length?`<tr><th>Date</th><th>Chauffeur</th><th>Obstacle</th><th class="num">Vitesse</th><th>Lieu</th></tr>`+dang.map(a=>`<tr><td>${dt(a.created_at)}</td><td>${name(a.user_id)}</td><td>${OBJ[a.object]||"—"}</td><td class="num">${a.speed_kmh!=null?a.speed_kmh+" km/h":"—"}</td><td>${a.lat!=null?`<a href="https://www.google.com/maps?q=${a.lat},${a.lng}" target="_blank" rel="noopener">Voir sur la carte</a>`:"—"}</td></tr>`).join(""):`<tr><td class="empty">Aucune alerte « Freinez » sur la période.</td></tr>`;
@@ -148,7 +148,7 @@ document.addEventListener("click",e=>{
 $("copyCode").onclick=async()=>{ try{ await navigator.clipboard.writeText(CO.code); $("copyCode").textContent="Copié"; }catch(e){ $("copyCode").textContent=CO.code; } setTimeout(()=>$("copyCode").textContent="Copier le code",2000); };
 $("period").onchange=load;
 $("csv").onclick=()=>{
-  const lines=[["Chauffeur","Téléphone","Score","Heures","Km","Freinez","Attention","Dernier trajet"].join(";")].concat(ROWS.map(r=>[r.u.full_name||"","+"+r.u.phone,r.s??"",r.h.toFixed(1).replace(".",","),Math.round(r.km),r.d,r.w,r.last?new Date(r.last).toLocaleString("fr-FR"):""].map(v=>`"${String(v).replace(/"/g,'""')}"`).join(";")));
+  const lines=[["Chauffeur","Téléphone","Score","Heures","Km","Freinez","Attention","Excès vitesse","Dernier trajet"].join(";")].concat(ROWS.map(r=>[r.u.full_name||"","+"+r.u.phone,r.s??"",r.h.toFixed(1).replace(".",","),Math.round(r.km),r.d,r.w,r.sp,r.last?new Date(r.last).toLocaleString("fr-FR"):""].map(v=>`"${String(v).replace(/"/g,'""')}"`).join(";")));
   const blob=new Blob(["﻿"+lines.join("\n")],{type:"text/csv;charset=utf-8"}); const a=document.createElement("a");
   a.href=URL.createObjectURL(blob); a.download=`copilote-${CO.code}-${new Date().toISOString().slice(0,10)}.csv`; a.click();
 };
