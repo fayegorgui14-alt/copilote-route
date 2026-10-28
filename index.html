@@ -49,6 +49,18 @@ ol{margin:0;padding-left:1.2em;display:flex;flex-direction:column;gap:6px;color:
 .numbers button{font:inherit;font-size:.85rem;padding:6px 10px;border-radius:8px;border:1px solid var(--line);background:transparent;color:var(--fg);cursor:pointer}
 .big{font-size:1.4rem;font-weight:800;margin:0}
 .ok{color:var(--safe)} .ko{color:var(--danger)} .wait{color:var(--warn)}
+.seg3{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.seg3 button{font:inherit;font-size:.9rem;padding:11px 6px;border-radius:10px;border:1px solid var(--line);background:transparent;color:var(--fg);cursor:pointer}
+.seg3 button[aria-pressed="true"]{background:var(--accent);color:#06101f;border-color:var(--accent);font-weight:700}
+.rec{color:#ff4d44;font-weight:800;font-size:.85rem;animation:pulse 1s infinite alternate}
+.player{width:100%;max-width:100%;border-radius:12px;background:#000}
+.vitem{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px 14px;display:flex;flex-direction:column;gap:8px}
+.vitem .top{display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap}
+.vitem .pill{font-size:.78rem;font-weight:800;padding:3px 9px;border-radius:99px}
+.vitem .pill.danger{background:#3a1a17;color:#ff7b6e} .vitem .pill.trajet{background:#162033;color:#8fb3ff}
+.vitem .acts{display:flex;gap:6px;flex-wrap:wrap}
+.vitem .acts button{font:inherit;font-size:.88rem;padding:8px 10px;border-radius:9px;border:1px solid var(--line);background:transparent;color:var(--fg);cursor:pointer}
+.vitem .acts button.del{color:var(--danger);border-color:var(--danger)}
 /* Mode conduite */
 .drive{position:fixed;inset:0;background:#000}
 .drive video,.drive canvas{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
@@ -142,6 +154,21 @@ ol{margin:0;padding-left:1.2em;display:flex;flex-direction:column;gap:6px;color:
     </div>
   </section>
 
+  <section class="card" id="recCard">
+    <h2>Enregistrement vidéo</h2>
+    <p class="hint">Comme une dashcam : le copilote filme tout seul pendant la route. Les vidéos restent dans votre téléphone.</p>
+    <div class="seg3" id="recMode">
+      <button type="button" data-m="off">Désactivé</button>
+      <button type="button" data-m="dangers">Dangers seulement</button>
+      <button type="button" data-m="trajet">Tout le trajet</button>
+    </div>
+    <p class="hint" id="recHelp"></p>
+    <label class="field" for="recMax">Espace maximum pour les vidéos
+      <select id="recMax"><option value="250">250 Mo</option><option value="500">500 Mo</option><option value="1000">1 Go</option><option value="2000">2 Go</option></select>
+    </label>
+    <button class="btn ghost" type="button" id="videosBtn">Mes vidéos</button>
+  </section>
+
   <section class="card">
     <h2>Installation</h2>
     <ol>
@@ -157,10 +184,19 @@ ol{margin:0;padding-left:1.2em;display:flex;flex-direction:column;gap:6px;color:
   <button class="link" id="logout">Se déconnecter</button>
 </main>
 
+<!-- Écran : mes vidéos -->
+<main class="home" id="videos" hidden>
+  <div class="logo"><img src="icon-192.png" alt=""><div><h1>Mes vidéos</h1></div></div>
+  <p class="hint" id="vUsage"></p>
+  <video id="player" class="player" controls playsinline hidden></video>
+  <div id="vList" class="stack"></div>
+  <button class="btn ghost" type="button" id="videosBack">Retour</button>
+</main>
+
 <section class="drive" id="drive" data-level="safe" hidden>
   <video id="vid" playsinline muted></video>
   <canvas id="cv"></canvas>
-  <div class="banner" role="status" aria-live="assertive"><div class="lamp"></div><b id="msg">Route dégagée</b><span class="fps" id="fps"></span></div>
+  <div class="banner" role="status" aria-live="assertive"><div class="lamp"></div><b id="msg">Route dégagée</b><span class="rec" id="recDot" hidden>● REC</span><span class="fps" id="fps"></span></div>
   <div class="controls"><button class="mute" id="muteBtn">Couper le son</button><button class="stop" id="stopBtn">Arrêter</button></div>
 </section>
 
@@ -169,6 +205,7 @@ ol{margin:0;padding-left:1.2em;display:flex;flex-direction:column;gap:6px;color:
 <script src="lib/supabase.js"></script>
 <script src="config.js"></script>
 <script src="account.js"></script>
+<script src="recorder.js"></script>
 <script>
 /* ======== Voix : français (voix du téléphone) ou wolof (phrases enregistrées) ======== */
 const VOICE={
@@ -247,7 +284,7 @@ function announceEnd(force){
 /* ======== Comptes et abonnement ======== */
 const A=window.Account;
 let ACCESS=null, authMode="signup";
-function show(id){ ["auth","pay","home"].forEach(x=>document.getElementById(x).hidden=(x!==id)); window.scrollTo(0,0); }
+function show(id){ ["auth","pay","home","videos"].forEach(x=>document.getElementById(x).hidden=(x!==id)); window.scrollTo(0,0); }
 
 function renderChip(){
   const c=document.getElementById("chip"); if(!ACCESS){c.hidden=true;return;}
@@ -434,7 +471,7 @@ function alertLevel(level,items){
   if(level==="danger"){
     if(now-lastBeep>450){beep(1200);lastBeep=now;}
     try{navigator.vibrate&&navigator.vibrate(150);}catch(e){}
-    if(lastLevel!=="danger") logAlert("danger",items.find(i=>i.lvl==="danger"));
+    if(lastLevel!=="danger"){ const dz=items.find(i=>i.lvl==="danger"); logAlert("danger",dz); try{ DashRec.markDanger(dz?dz.class:""); }catch(e){} }
     if(lastLevel!=="danger"&&now-lastSpeak>2500){const it=items.find(i=>i.lvl==="danger");speak("Freinez ! "+(it?NAMES[it.class]:"obstacle")+" devant");lastSpeak=now;}
   }else if(level==="warn"&&lastLevel==="safe"&&now-lastSpeak>4000){
     logAlert("warn",items.find(i=>i.lvl==="warn"));
@@ -501,12 +538,16 @@ $("start").onclick=async()=>{
   }catch(e){ $("status").textContent="La caméra est refusée. Autorisez-la dans les réglages du navigateur, puis réessayez."; return; }
   vid.srcObject=stream; vid.loop=false; await vid.play().catch(()=>{});
   await enterDrive(true); endedDuringTrip=false;
+  try{ DashRec.start(stream); }catch(e){}
   const k=endKey(); if(k&&k.startsWith("fin_")){ say(k); setTimeout(()=>say("active"),7000); } else say("active");
 };
 $("pickBtn").onclick=async()=>{ if(await gate()) $("pick").click(); };
 $("pick").onchange=async e=>{const f=e.target.files[0]; if(!f) return; vid.srcObject=null; vid.src=URL.createObjectURL(f); vid.loop=true; await vid.play().catch(()=>{}); await enterDrive();};
 $("stopBtn").onclick=()=>{
-  running=false; endTrip(); if(stream){stream.getTracks().forEach(t=>t.stop());stream=null;}
+  running=false; endTrip(); try{ DashRec.stop(); }catch(e){}
+  // laisse le temps au dernier morceau de vidéo d'être enregistré avant de couper la caméra
+  const st=stream; stream=null; if(st) setTimeout(()=>st.getTracks().forEach(t=>t.stop()),800);
+  if(stream){stream.getTracks().forEach(t=>t.stop());stream=null;}
   vid.pause(); vid.removeAttribute("src"); vid.srcObject=null;
   try{wake&&wake.release();}catch(e){} try{document.fullscreenElement&&document.exitFullscreen();}catch(e){}
   try{speechSynthesis.cancel();}catch(e){}
@@ -514,6 +555,51 @@ $("stopBtn").onclick=()=>{
 };
 $("muteBtn").onclick=()=>{muted=!muted; $("muteBtn").textContent=muted?"Remettre le son":"Couper le son"; if(muted) try{speechSynthesis.cancel();}catch(e){}};
 document.addEventListener("visibilitychange",async()=>{ if(document.visibilityState==="visible"&&running){try{wake=await navigator.wakeLock.request("screen");}catch(e){}} });
+
+/* ======== Réglages et écran « Mes vidéos » ======== */
+const REC_HELP={off:"Aucune vidéo n'est enregistrée.",dangers:"Recommandé : une vidéo d'environ 20 à 30 secondes est gardée à chaque alerte « FREINEZ », avec les secondes d'avant. Prend peu de place.",trajet:"Tout le trajet est filmé, par morceaux d'une minute. Les plus anciens trajets sont effacés quand l'espace maximum est atteint. Les vidéos de danger sont gardées en priorité."};
+function renderRec(){
+  const s=DashRec.settings;
+  if(!DashRec.supported){ $("recCard").querySelector(".hint").textContent="Ce téléphone ne permet pas l'enregistrement vidéo dans l'application."; $("recMode").hidden=true; return; }
+  [...$("recMode").children].forEach(b=>b.setAttribute("aria-pressed",b.dataset.m===s.mode));
+  $("recHelp").textContent=REC_HELP[s.mode]; $("recMax").value=String(s.maxMb);
+  DashRec.events().then(ev=>{ $("videosBtn").textContent="Mes vidéos ("+ev.length+")"; }).catch(()=>{});
+}
+$("recMode").onclick=e=>{ const b=e.target.closest("button"); if(!b) return; DashRec.saveSettings({mode:b.dataset.m}); renderRec(); };
+$("recMax").onchange=()=>{ DashRec.saveSettings({maxMb:+$("recMax").value}); renderRec(); };
+DashRec.onChange(()=>{ $("recDot").hidden=!DashRec.recording; if(!$("home").hidden) renderRec(); if(!$("videos").hidden) renderVideos(); });
+renderRec();
+
+const OBJN={car:"voiture",truck:"camion",bus:"bus",motorcycle:"moto",bicycle:"vélo",person:"piéton"};
+const mb=n=>(n/1048576).toFixed(n>104857600?0:1).replace(".",",")+" Mo";
+let playing=null;
+function fileName(e,i){ const d=new Date(e.start); const p=n=>String(n).padStart(2,"0"); const ext=(e.parts[i].mime||"").includes("mp4")?"mp4":"webm";
+  return `copilote-${e.kind}-${d.getFullYear()}${p(d.getMonth()+1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}${e.parts.length>1?"-"+(i+1):""}.${ext}`; }
+async function renderVideos(){
+  const ev=await DashRec.events(), used=await DashRec.usage();
+  $("vUsage").textContent=`${ev.length} vidéo${ev.length>1?"s":""} · ${mb(used)} utilisés sur ${DashRec.settings.maxMb>=1000?DashRec.settings.maxMb/1000+" Go":DashRec.settings.maxMb+" Mo"}`;
+  if(!ev.length){ $("vList").innerHTML=`<div class="vitem"><p class="hint" style="margin:0">Aucune vidéo pour l'instant. Choisissez « Dangers seulement » ou « Tout le trajet » dans les réglages, puis démarrez le copilote.</p></div>`; return; }
+  $("vList").innerHTML=ev.map(e=>{ const sec=Math.round((e.end-e.start)/1000); const d=new Date(e.start);
+    return `<div class="vitem"><div class="top"><b>${d.toLocaleDateString("fr-FR",{day:"numeric",month:"short"})} à ${d.toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"})}</b><span class="pill ${e.kind}">${e.kind==="danger"?"FREINEZ"+(e.object&&OBJN[e.object]?" · "+OBJN[e.object]:""):"Trajet"}</span></div>
+    <span class="hint">${sec>=60?Math.floor(sec/60)+" min "+String(sec%60).padStart(2,"0")+" s":sec+" s"} · ${mb(e.size)}</span>
+    <div class="acts"><button data-play="${e.eventId}">▶ Regarder</button><button data-save="${e.eventId}">Enregistrer sur le téléphone</button><button data-share="${e.eventId}">Partager</button><button class="del" data-del="${e.eventId}">Supprimer</button></div></div>`; }).join("");
+}
+async function playEvent(e){
+  const p=$("player"); let i=0; p.hidden=false;
+  const next=async()=>{ if(i>=e.parts.length) return; const b=await DashRec.getBlob(e.parts[i].id); i++; if(!b) return next(); if(p.src) URL.revokeObjectURL(p.src); p.src=URL.createObjectURL(b); p.play().catch(()=>{}); };
+  p.onended=next; await next(); p.scrollIntoView({behavior:"smooth",block:"start"});
+}
+$("vList").onclick=async ev=>{
+  const b=ev.target.closest("button"); if(!b) return;
+  const list=await DashRec.events(); const e=list.find(x=>x.eventId===(b.dataset.play||b.dataset.save||b.dataset.share||b.dataset.del)); if(!e) return;
+  if(b.dataset.play) playEvent(e);
+  if(b.dataset.save){ for(let i=0;i<e.parts.length;i++){ const bl=await DashRec.getBlob(e.parts[i].id); if(!bl) continue; const a=document.createElement("a"); a.href=URL.createObjectURL(bl); a.download=fileName(e,i); document.body.appendChild(a); a.click(); a.remove(); await new Promise(r=>setTimeout(r,400)); } b.textContent="Enregistré dans Téléchargements"; }
+  if(b.dataset.share){ try{ const files=[]; for(let i=0;i<e.parts.length;i++){ const bl=await DashRec.getBlob(e.parts[i].id); if(bl) files.push(new File([bl],fileName(e,i),{type:bl.type})); }
+      if(navigator.canShare&&navigator.canShare({files})) await navigator.share({files,title:"Vidéo Copilote Route"}); else b.textContent="Partage impossible : utilisez « Enregistrer »"; }catch(x){} }
+  if(b.dataset.del){ if(b.dataset.sure){ await DashRec.deleteEvent(e.eventId); $("player").hidden=true; renderVideos(); } else { b.dataset.sure="1"; b.textContent="Toucher encore pour confirmer"; } }
+};
+$("videosBtn").onclick=()=>{ show("videos"); renderVideos(); };
+$("videosBack").onclick=()=>{ const p=$("player"); p.pause(); p.hidden=true; show("home"); renderRec(); };
 </script>
 </body>
 </html>
