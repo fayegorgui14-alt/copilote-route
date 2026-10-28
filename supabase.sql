@@ -325,3 +325,9 @@ create policy trips_read on public.trips for select to authenticated
 
 -- 12. APRÈS vous être inscrit dans l'application, devenez administrateur :
 -- update public.profiles set role = 'admin' where phone = '221XXXXXXXXX';
+
+-- 13. Droits d'accès explicites (les lignes restent protégées par les règles ci-dessus)
+grant usage on schema public to anon, authenticated;
+grant select, update on public.settings, public.profiles, public.companies to authenticated;
+grant select on public.payments, public.alerts, public.trips to authenticated;
+grant execute on all functions in schema public to authenticated;
