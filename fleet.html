@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>Copilote Route · Espace entreprise</title>
+<link rel="icon" href="icon-192.png">
+<style>
+:root{--bg:#f2f4f7;--surface:#fff;--fg:#141a21;--muted:#5a6673;--line:#d9dfe6;--accent:#1d5fd1;--accent-fg:#fff;--safe:#1f8a4c;--safe-bg:#e3f4ea;--warn:#a86a00;--warn-bg:#fbf0d9;--danger:#c2362b;--danger-bg:#fbe4e1}
+@media (prefers-color-scheme:dark){:root{--bg:#0d1116;--surface:#161c23;--fg:#e7ecf1;--muted:#97a4b1;--line:#28313b;--accent:#6a9cff;--accent-fg:#07101f;--safe:#5fd18c;--safe-bg:#15301f;--warn:#ffbe55;--warn-bg:#33281a;--danger:#ff7b6e;--danger-bg:#3a1a17;color-scheme:dark}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-size:15px;line-height:1.45}
+[hidden]{display:none!important}
+.wrap{max-width:1100px;margin:0 auto;padding:calc(env(safe-area-inset-top,0px) + 20px) max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px));display:flex;flex-direction:column;gap:16px}
+header{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+header img{width:40px;height:40px;border-radius:10px}
+h1{font-size:1.35rem;margin:0} h2{font-size:1.05rem;margin:0}
+.right{margin-left:auto;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.kpi{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px}
+.kpi span{color:var(--muted);font-size:.85rem} .kpi b{display:block;font-size:1.35rem;white-space:nowrap;font-variant-numeric:tabular-nums}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:12px;min-width:0}
+.tablewrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:.92rem}
+th,td{text-align:left;padding:10px 8px;border-top:1px solid var(--line);white-space:nowrap;vertical-align:middle}
+th{color:var(--muted);font-weight:600;font-size:.8rem;text-transform:uppercase;letter-spacing:.04em;border-top:0}
+td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+.pill{display:inline-block;padding:3px 9px;border-radius:99px;font-size:.8rem;font-weight:700;font-variant-numeric:tabular-nums}
+.good{background:var(--safe-bg);color:var(--safe)} .mid{background:var(--warn-bg);color:var(--warn)} .bad{background:var(--danger-bg);color:var(--danger)} .none{color:var(--muted)}
+.btn{font:inherit;font-weight:600;padding:8px 12px;border-radius:9px;border:1px solid var(--line);background:var(--surface);color:var(--fg);cursor:pointer;text-decoration:none;display:inline-block}
+.btn.primary{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
+.btn.danger{color:var(--danger);border-color:var(--danger)}
+.btn:focus-visible,select:focus-visible,input:focus-visible{outline:3px solid var(--accent);outline-offset:1px}
+select,input{font:inherit;padding:9px 12px;border-radius:9px;border:1px solid var(--line);background:var(--bg);color:var(--fg)}
+.code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:1.5rem;font-weight:800;letter-spacing:.15em}
+.row{display:flex;gap:16px;flex-wrap:wrap;align-items:center}
+.muted{color:var(--muted)} .error{color:var(--danger);margin:0;min-height:1.2em}
+.empty{color:var(--muted);padding:18px 8px;text-align:center;white-space:normal}
+.login{max-width:380px;margin:8vh auto 0}
+.field{display:flex;flex-direction:column;gap:5px;font-weight:600;font-size:.9rem}
+.dialog{position:fixed;inset:0;background:rgba(0,0,0,.45);display:grid;place-items:center;padding:16px;z-index:10}
+.dialog .card{width:100%;max-width:420px}
+.status-ok{color:var(--safe);font-weight:700} .status-ko{color:var(--danger);font-weight:700}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<section id="login" class="login card" hidden>
+  <header><img src="icon-192.png" alt=""><h1>Espace entreprise</h1></header>
+  <p class="muted">Pour les responsables de flotte. Connectez-vous avec votre compte Copilote Route.</p>
+  <form id="loginForm" style="display:flex;flex-direction:column;gap:12px" novalidate>
+    <label class="field">Numéro de téléphone<input id="lPhone" type="tel" autocomplete="tel"></label>
+    <label class="field">Code secret<input id="lPin" type="password" inputmode="numeric" maxlength="6" autocomplete="current-password"></label>
+    <button class="btn primary" type="submit">Se connecter</button>
+    <p class="error" id="lErr" role="alert"></p>
+  </form>
+</section>
+
+<section id="main" hidden style="display:flex;flex-direction:column;gap:16px">
+  <header><img src="icon-192.png" alt=""><div><h1 id="coName">Entreprise</h1><span class="muted">Espace entreprise · Copilote Route</span></div>
+    <div class="right">
+      <label for="period" class="muted">Période</label>
+      <select id="period"><option value="7">7 derniers jours</option><option value="30">30 derniers jours</option></select>
+      <button class="btn" id="csv">Exporter (Excel)</button>
+      <button class="btn" id="logout">Se déconnecter</button>
+    </div></header>
+
+  <div class="card">
+    <div class="row">
+      <div><span class="muted">Code à donner aux chauffeurs</span><div class="code" id="coCode">——————</div></div>
+      <button class="btn" id="copyCode">Copier le code</button>
+      <div style="margin-left:auto;text-align:right"><span class="muted">Abonnement</span><div id="coSub"></div></div>
+    </div>
+    <p class="muted" style="margin:0">Chaque chauffeur installe Copilote Route, crée son compte, puis entre ce code dans « Mon abonnement ». Il est alors couvert par votre abonnement.</p>
+  </div>
+
+  <div class="kpis" id="kpis"></div>
+
+  <div class="card"><h2>Chauffeurs</h2>
+    <p class="muted" style="margin:0">Le score de prudence (sur 100) baisse avec le nombre d'alertes « Freinez » et « Attention » par heure de conduite.</p>
+    <div class="tablewrap"><table id="drivers"></table></div></div>
+
+  <div class="card"><h2>Dernières alertes « Freinez »</h2><div class="tablewrap"><table id="alerts"></table></div></div>
+</section>
+</div>
+<div class="dialog" id="dlg" hidden><div class="card" id="dlgBody"></div></div>
+
+<script src="lib/supabase.js"></script>
+<script src="config.js"></script>
+<script src="account.js"></script>
+<script>
+const A=window.Account, sb=A.sb, $=id=>document.getElementById(id);
+const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const OBJ={car:"Voiture",truck:"Camion",bus:"Bus",motorcycle:"Moto",bicycle:"Vélo",person:"Piéton"};
+let ME=null, CO=null, PEOPLE=[], TRIPS=[], ALERTS=[], ROWS=[];
+const dt=iso=>iso?new Date(iso).toLocaleString("fr-FR",{day:"2-digit",month:"short",hour:"2-digit",minute:"2-digit"}):"—";
+
+function score(h,danger,warn){ if(h<0.25) return null; return Math.max(0,Math.min(100,Math.round(100-25*danger/h-5*warn/h))); }
+function pill(s){ if(s==null) return `<span class="pill none">pas assez de conduite</span>`; return `<span class="pill ${s>=80?"good":s>=60?"mid":"bad"}">${s}/100</span>`; }
+
+async function boot(){
+  if(!A.configured){ $("login").hidden=false; $("lErr").textContent="L'espace entreprise n'est pas encore relié à la base de données."; return; }
+  const s=await A.session(); if(!s){ $("login").hidden=false; return; }
+  const {data:me}=await sb.from("profiles").select("*").eq("id",s.user.id).single(); ME=me;
+  if(!me||!me.company_id||(me.company_role!=="manager"&&me.role!=="admin")){ $("login").hidden=false; $("main").hidden=true; $("lErr").textContent="Ce compte n'est pas responsable d'une entreprise."; return; }
+  $("login").hidden=true; $("main").hidden=false; await load();
+}
+async function load(){
+  const days=+$("period").value, since=new Date(Date.now()-days*864e5).toISOString();
+  const [c,p,t,a]=await Promise.all([
+    sb.from("companies").select("*").eq("id",ME.company_id).single(),
+    sb.from("profiles").select("id,full_name,phone,company_role,last_seen_at,created_at").eq("company_id",ME.company_id),
+    sb.from("trips").select("*").eq("company_id",ME.company_id).gte("started_at",since).limit(10000),
+    sb.from("alerts").select("*").eq("company_id",ME.company_id).gte("created_at",since).order("created_at",{ascending:false}).limit(10000)
+  ]);
+  CO=c.data; PEOPLE=p.data||[]; TRIPS=t.data||[]; ALERTS=a.data||[]; render();
+}
+function render(){
+  $("coName").textContent=CO.name; $("coCode").textContent=CO.code;
+  const ok=CO.paid_until&&new Date(CO.paid_until)>new Date();
+  $("coSub").innerHTML=ok?`<span class="status-ok">Actif jusqu'au ${A.fmtDate(CO.paid_until)}</span>`:`<span class="status-ko">Expiré : vos chauffeurs ne sont plus couverts</span>`;
+  const drivers=PEOPLE.filter(x=>x.company_role==="driver");
+  ROWS=PEOPLE.map(u=>{
+    const tr=TRIPS.filter(x=>x.user_id===u.id), al=ALERTS.filter(x=>x.user_id===u.id);
+    const h=tr.reduce((s,x)=>s+(new Date(x.ended_at)-new Date(x.started_at))/36e5,0), km=tr.reduce((s,x)=>s+(x.distance_km||0),0);
+    const d=al.filter(x=>x.level==="danger").length, w=al.filter(x=>x.level==="warn").length;
+    const last=tr.map(x=>x.ended_at).sort().pop();
+    return {u,h,km,d,w,s:score(h,d,w),last};
+  }).sort((a,b)=>(a.s??101)-(b.s??101));
+  const H=ROWS.reduce((s,r)=>s+r.h,0), KM=ROWS.reduce((s,r)=>s+r.km,0), D=ROWS.reduce((s,r)=>s+r.d,0);
+  const scored=ROWS.filter(r=>r.s!=null), avg=scored.length?Math.round(scored.reduce((s,r)=>s+r.s,0)/scored.length):null;
+  const k=[["Chauffeurs",drivers.length+" / "+CO.max_drivers],["Heures de conduite",H.toFixed(1).replace(".",",")+" h"],["Distance",Math.round(KM).toLocaleString("fr-FR")+" km"],["Alertes « Freinez »",D],["Score moyen",avg==null?"—":avg+"/100"]];
+  $("kpis").innerHTML=k.map(([l,v])=>`<div class="kpi"><span>${l}</span><b>${v}</b></div>`).join("");
+  $("drivers").innerHTML=ROWS.length?`<tr><th>Chauffeur</th><th>Score</th><th class="num">Heures</th><th class="num">Km</th><th class="num">Freinez</th><th class="num">Attention</th><th>Dernier trajet</th><th></th></tr>`+ROWS.map(r=>`<tr><td>${esc(r.u.full_name||"Sans nom")}${r.u.company_role==="manager"?" <span class='muted'>(responsable)</span>":""}<br><span class="muted">${A.fmtPhone(r.u.phone)}</span></td><td>${pill(r.s)}</td><td class="num">${r.h.toFixed(1).replace(".",",")}</td><td class="num">${Math.round(r.km)}</td><td class="num">${r.d}</td><td class="num">${r.w}</td><td>${dt(r.last)}</td><td>${r.u.company_role==="driver"?`<button class="btn danger" data-rm="${r.u.id}">Retirer</button>`:""}</td></tr>`).join(""):`<tr><td class="empty">Aucun chauffeur pour l'instant. Donnez le code ci-dessus à vos chauffeurs.</td></tr>`;
+  const name=id=>{const u=PEOPLE.find(x=>x.id===id); return u?esc(u.full_name||A.fmtPhone(u.phone)):"Ancien chauffeur";};
+  const dang=ALERTS.filter(a=>a.level==="danger").slice(0,50);
+  $("alerts").innerHTML=dang.length?`<tr><th>Date</th><th>Chauffeur</th><th>Obstacle</th><th class="num">Vitesse</th><th>Lieu</th></tr>`+dang.map(a=>`<tr><td>${dt(a.created_at)}</td><td>${name(a.user_id)}</td><td>${OBJ[a.object]||"—"}</td><td class="num">${a.speed_kmh!=null?a.speed_kmh+" km/h":"—"}</td><td>${a.lat!=null?`<a href="https://www.google.com/maps?q=${a.lat},${a.lng}" target="_blank" rel="noopener">Voir sur la carte</a>`:"—"}</td></tr>`).join(""):`<tr><td class="empty">Aucune alerte « Freinez » sur la période.</td></tr>`;
+}
+document.addEventListener("click",e=>{
+  const b=e.target.closest("[data-rm]"); if(!b) return;
+  const u=PEOPLE.find(x=>x.id===b.dataset.rm);
+  $("dlgBody").innerHTML=`<h2>Retirer ce chauffeur ?</h2><p>${esc(u.full_name||A.fmtPhone(u.phone))} ne sera plus couvert par votre abonnement. Son historique reste visible.</p><div class="row"><button class="btn danger" id="y">Retirer</button><button class="btn" id="n">Annuler</button></div>`;
+  $("dlg").hidden=false; $("n").onclick=()=>$("dlg").hidden=true;
+  $("y").onclick=async()=>{ $("dlg").hidden=true; const {error}=await sb.rpc("manager_remove_driver",{p_user:u.id}); if(error) alert(A.frError(error)); await load(); };
+});
+$("copyCode").onclick=async()=>{ try{ await navigator.clipboard.writeText(CO.code); $("copyCode").textContent="Copié"; }catch(e){ $("copyCode").textContent=CO.code; } setTimeout(()=>$("copyCode").textContent="Copier le code",2000); };
+$("period").onchange=load;
+$("csv").onclick=()=>{
+  const lines=[["Chauffeur","Téléphone","Score","Heures","Km","Freinez","Attention","Dernier trajet"].join(";")].concat(ROWS.map(r=>[r.u.full_name||"","+"+r.u.phone,r.s??"",r.h.toFixed(1).replace(".",","),Math.round(r.km),r.d,r.w,r.last?new Date(r.last).toLocaleString("fr-FR"):""].map(v=>`"${String(v).replace(/"/g,'""')}"`).join(";")));
+  const blob=new Blob(["﻿"+lines.join("\n")],{type:"text/csv;charset=utf-8"}); const a=document.createElement("a");
+  a.href=URL.createObjectURL(blob); a.download=`copilote-${CO.code}-${new Date().toISOString().slice(0,10)}.csv`; a.click();
+};
+$("loginForm").onsubmit=async e=>{ e.preventDefault(); $("lErr").textContent=""; try{ await A.signIn($("lPhone").value,$("lPin").value.trim()); await boot(); }catch(x){ $("lErr").textContent=x.message; } };
+$("logout").onclick=async()=>{ await A.signOut(); location.reload(); };
+setInterval(()=>{ if(!$("main").hidden) load(); },120000);
+boot();
+</script>
+</body>
+</html>

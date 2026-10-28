@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>Copilote Route · Back-office</title>
+<link rel="icon" href="icon-192.png">
+<link rel="manifest" href="admin.webmanifest">
+<meta name="theme-color" content="#1d5fd1">
+<style>
+:root{--bg:#f2f4f7;--surface:#fff;--fg:#141a21;--muted:#5a6673;--line:#d9dfe6;--accent:#1d5fd1;--accent-fg:#fff;--safe:#1f8a4c;--safe-bg:#e3f4ea;--warn:#a86a00;--warn-bg:#fbf0d9;--danger:#c2362b;--danger-bg:#fbe4e1}
+@media (prefers-color-scheme:dark){:root{--bg:#0d1116;--surface:#161c23;--fg:#e7ecf1;--muted:#97a4b1;--line:#28313b;--accent:#6a9cff;--accent-fg:#07101f;--safe:#5fd18c;--safe-bg:#15301f;--warn:#ffbe55;--warn-bg:#33281a;--danger:#ff7b6e;--danger-bg:#3a1a17;color-scheme:dark}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-size:15px;line-height:1.45}
+[hidden]{display:none!important}
+.wrap{max-width:1100px;margin:0 auto;padding:calc(env(safe-area-inset-top,0px) + 20px) max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px));display:flex;flex-direction:column;gap:18px}
+header{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+header img{width:40px;height:40px;border-radius:10px}
+h1{font-size:1.4rem;margin:0}
+h2{font-size:1.05rem;margin:0}
+.who{margin-left:auto;color:var(--muted);font-size:.9rem;display:flex;gap:10px;align-items:center}
+.tabs{display:flex;gap:6px;flex-wrap:wrap;border-bottom:1px solid var(--line)}
+.tabs button{font:inherit;font-weight:600;padding:10px 14px;border:0;background:none;color:var(--muted);border-bottom:3px solid transparent;cursor:pointer}
+.tabs button[aria-selected="true"]{color:var(--fg);border-bottom-color:var(--accent)}
+.badge{display:inline-block;min-width:20px;padding:1px 7px;border-radius:99px;background:var(--danger);color:#fff;font-size:.75rem;margin-left:6px}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px}
+.kpi{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px}
+.kpi span{color:var(--muted);font-size:.85rem}
+.kpi b{display:block;font-size:1.35rem;white-space:nowrap;font-variant-numeric:tabular-nums}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:12px;min-width:0}
+.tablewrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:.92rem}
+th,td{text-align:left;padding:10px 8px;border-top:1px solid var(--line);vertical-align:middle;white-space:nowrap}
+th{color:var(--muted);font-weight:600;font-size:.8rem;text-transform:uppercase;letter-spacing:.04em;border-top:0}
+td.num{font-variant-numeric:tabular-nums;text-align:right}
+.pill{display:inline-block;padding:3px 9px;border-radius:99px;font-size:.78rem;font-weight:700}
+.pill.trial,.pill.pending{background:var(--warn-bg);color:var(--warn)}
+.pill.active,.pill.validated{background:var(--safe-bg);color:var(--safe)}
+.pill.expired,.pill.blocked,.pill.rejected{background:var(--danger-bg);color:var(--danger)}
+.btn{font:inherit;font-weight:600;padding:8px 12px;border-radius:9px;border:1px solid var(--line);background:var(--surface);color:var(--fg);cursor:pointer}
+.btn.primary{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
+.btn.ok{background:var(--safe);color:#fff;border-color:var(--safe)}
+.btn.bad{color:var(--danger);border-color:var(--danger)}
+.btn:disabled{opacity:.5;cursor:default}
+.btn:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid var(--accent);outline-offset:1px}
+.actions{display:flex;gap:6px;flex-wrap:wrap}
+.field{display:flex;flex-direction:column;gap:5px;font-weight:600;font-size:.9rem}
+input,select{font:inherit;padding:10px 12px;border-radius:9px;border:1px solid var(--line);background:var(--bg);color:var(--fg);min-width:0}
+.form{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;align-items:end}
+.toolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.toolbar input{flex:1;min-width:180px}
+.muted{color:var(--muted)} .error{color:var(--danger);margin:0;min-height:1.2em} .okmsg{color:var(--safe);margin:0}
+.login{max-width:380px;margin:8vh auto 0}
+.empty{color:var(--muted);padding:18px 8px;text-align:center}
+.dialog{position:fixed;inset:0;background:rgba(0,0,0,.45);display:grid;place-items:center;padding:16px;z-index:10}
+.dialog .card{width:100%;max-width:420px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<section id="login" class="login card" hidden>
+  <header><img src="icon-192.png" alt=""><h1>Back-office</h1></header>
+  <p class="muted">Réservé à l'administrateur de Copilote Route.</p>
+  <form id="loginForm" class="form" style="grid-template-columns:1fr" novalidate>
+    <label class="field">Numéro de téléphone<input id="lPhone" type="tel" autocomplete="tel"></label>
+    <label class="field">Code secret<input id="lPin" type="password" inputmode="numeric" maxlength="6" autocomplete="current-password"></label>
+    <button class="btn primary" type="submit">Se connecter</button>
+    <p class="error" id="lErr" role="alert"></p>
+  </form>
+</section>
+
+<section id="main" hidden>
+  <div style="display:flex;flex-direction:column;gap:18px">
+  <header><img src="icon-192.png" alt=""><h1>Copilote Route · Back-office</h1>
+    <div class="who"><span id="who"></span><button class="btn" id="logout">Se déconnecter</button></div></header>
+
+  <nav class="tabs" role="tablist">
+    <button role="tab" aria-selected="true" data-tab="dash">Tableau de bord</button>
+    <button role="tab" aria-selected="false" data-tab="pays">Paiements<span class="badge" id="pendBadge" hidden></span></button>
+    <button role="tab" aria-selected="false" data-tab="users">Utilisateurs</button>
+    <button role="tab" aria-selected="false" data-tab="companies">Entreprises</button>
+    <button role="tab" aria-selected="false" data-tab="settings">Réglages</button>
+  </nav>
+
+  <div id="tab-dash" class="stack" style="display:flex;flex-direction:column;gap:14px">
+    <div class="kpis" id="kpis"></div>
+    <div class="card"><h2>Derniers paiements validés</h2><div class="tablewrap"><table id="recentPays"></table></div></div>
+  </div>
+
+  <div id="tab-pays" hidden style="display:flex;flex-direction:column;gap:14px">
+    <div class="card"><h2>À vérifier</h2>
+      <p class="muted">Vérifiez dans votre application Wave ou Orange Money que l'argent est bien arrivé avec cette référence, puis validez. L'abonnement du client est prolongé automatiquement.</p>
+      <div class="tablewrap"><table id="pendingTable"></table></div></div>
+    <div class="card"><h2>Historique</h2><div class="tablewrap"><table id="histTable"></table></div></div>
+  </div>
+
+  <div id="tab-users" hidden style="display:flex;flex-direction:column;gap:14px">
+    <div class="card">
+      <div class="toolbar"><input id="search" placeholder="Rechercher un nom ou un numéro"><select id="filter"><option value="">Tous</option><option value="trial">Essai</option><option value="active">Abonnés</option><option value="expired">Expirés</option><option value="blocked">Bloqués</option></select></div>
+      <div class="tablewrap"><table id="usersTable"></table></div>
+    </div>
+  </div>
+
+  <div id="tab-companies" hidden style="display:flex;flex-direction:column;gap:14px">
+    <form class="card" id="coForm" novalidate>
+      <h2>Nouvelle entreprise</h2>
+      <div class="form">
+        <label class="field">Nom de l'entreprise<input id="cName" placeholder="Ex. : Taxi Dakar Express"></label>
+        <label class="field">Téléphone du contact<input id="cContact" type="tel"></label>
+        <label class="field">Prix par véhicule et par mois (FCFA)<input id="cPrice" type="number" min="0" step="500" value="4000"></label>
+        <label class="field">Nombre de véhicules<input id="cMax" type="number" min="1" value="5"></label>
+        <label class="field">Mois déjà payés<select id="cMonths"><option value="0">Aucun (pas encore payé)</option><option value="1" selected>1 mois</option><option value="3">3 mois</option><option value="6">6 mois</option><option value="12">12 mois</option></select></label>
+      </div>
+      <div class="actions"><button class="btn primary" type="submit">Créer l'entreprise</button></div>
+      <p id="coMsg" role="status"></p>
+    </form>
+    <div class="card"><h2>Entreprises clientes</h2><div class="tablewrap"><table id="coTable"></table></div></div>
+  </div>
+
+  <div id="tab-settings" hidden>
+    <form class="card" id="setForm" novalidate>
+      <h2>Prix et paiement</h2>
+      <div class="form">
+        <label class="field">Prix par mois (FCFA)<input id="sPrice" type="number" min="100" step="100"></label>
+        <label class="field">Essai gratuit (jours)<input id="sTrial" type="number" min="0" max="90"></label>
+        <label class="field">Numéro Wave<input id="sWave" placeholder="77 000 00 00"></label>
+        <label class="field">Numéro Orange Money<input id="sOm" placeholder="77 000 00 00"></label>
+      </div>
+      <p class="muted">L'essai gratuit s'applique aux nouveaux inscrits. Le prix s'applique aux nouveaux paiements.</p>
+      <div class="actions"><button class="btn primary" type="submit">Enregistrer</button></div>
+      <p id="setMsg" role="status"></p>
+    </form>
+  </div>
+  </div>
+</section>
+</div>
+
+<div class="dialog" id="dlg" hidden><div class="card" id="dlgBody"></div></div>
+
+<script src="lib/supabase.js"></script>
+<script src="config.js"></script>
+<script src="account.js"></script>
+<script>
+const A=window.Account, sb=A.sb, $=id=>document.getElementById(id);
+const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const METHOD={wave:"Wave",orange_money:"Orange Money",especes:"Espèces",autre:"Autre"};
+const STATUS={trial:"Essai",active:"Abonné",expired:"Expiré",blocked:"Bloqué",pending:"À vérifier",validated:"Validé",rejected:"Refusé"};
+let USERS=[], PAYS=[], SETTINGS=null, COMPANIES=[];
+function renderCompanies(){
+  $("coTable").innerHTML=COMPANIES.length?`<tr><th>Entreprise</th><th>Code</th><th style="text-align:right">Chauffeurs</th><th style="text-align:right">Par mois</th><th>Abonnement</th><th></th></tr>`+COMPANIES.map(c=>{
+    const n=USERS.filter(u=>u.company_id===c.id&&u.company_role==="driver").length, mgr=USERS.find(u=>u.company_id===c.id&&u.company_role==="manager");
+    const ok=c.paid_until&&new Date(c.paid_until)>new Date();
+    return `<tr><td><b>${esc(c.name)}</b><br><span class="muted">${esc(c.contact_phone)||"—"}${mgr?" · Responsable : "+esc(mgr.full_name||A.fmtPhone(mgr.phone)):" · Pas de responsable"}</span></td><td><b style="font-family:ui-monospace,monospace;letter-spacing:.1em">${c.code}</b></td><td style="text-align:right">${n} / ${c.max_drivers}</td><td style="text-align:right">${A.fcfa(c.price_per_vehicle*c.max_drivers)}</td><td><span class="pill ${ok?"active":"expired"}">${ok?"Jusqu'au "+A.fmtDate(c.paid_until):"Expiré"}</span></td><td><div class="actions"><button class="btn ok" data-coext="${c.id}">Paiement reçu</button><button class="btn" data-comgr="${c.id}">Choisir le responsable</button><button class="btn" data-coedit="${c.id}">Modifier</button></div></td></tr>`;}).join(""):`<tr><td class="empty">Aucune entreprise cliente pour l'instant.</td></tr>`;
+}
+
+function statusOf(u){ const now=new Date(); if(u.blocked) return "blocked"; const co=u.company_id&&COMPANIES.find(c=>c.id===u.company_id); if(co&&co.paid_until&&new Date(co.paid_until)>now) return "active"; if(u.paid_until&&new Date(u.paid_until)>now) return "active"; if(new Date(u.trial_ends_at)>now) return "trial"; return "expired"; }
+function endOf(u){ const s=statusOf(u); return s==="active"?u.paid_until:s==="trial"?u.trial_ends_at:(u.paid_until||u.trial_ends_at); }
+const dt=iso=>iso?new Date(iso).toLocaleString("fr-FR",{day:"2-digit",month:"short",hour:"2-digit",minute:"2-digit"}):"—";
+
+async function boot(){
+  if(!A.configured){ $("login").hidden=false; $("lErr").textContent="Le back-office n'est pas encore relié à la base de données (config.js)."; return; }
+  const s=await A.session(); if(!s){ $("login").hidden=false; $("main").hidden=true; return; }
+  const {data:me}=await sb.from("profiles").select("*").eq("id",s.user.id).single();
+  if(!me||me.role!=="admin"){ await A.signOut(); $("login").hidden=false; $("main").hidden=true; $("lErr").textContent="Ce compte n'est pas administrateur."; return; }
+  $("who").textContent=(me.full_name||"Admin")+" · "+A.fmtPhone(me.phone);
+  $("login").hidden=true; $("main").hidden=false;
+  await loadAll();
+}
+async function loadAll(){
+  const [u,p,st,co]=await Promise.all([
+    sb.from("profiles").select("*").order("created_at",{ascending:false}).limit(5000),
+    sb.from("payments").select("*").order("created_at",{ascending:false}).limit(2000),
+    sb.from("settings").select("*").eq("id",1).single(),
+    sb.from("companies").select("*").order("created_at",{ascending:false})
+  ]);
+  USERS=u.data||[]; PAYS=p.data||[]; SETTINGS=st.data; COMPANIES=co.data||[];
+  renderDash(); renderPays(); renderUsers(); renderSettings(); renderCompanies();
+}
+const userName=id=>{const u=USERS.find(x=>x.id===id); return u?(esc(u.full_name||"Sans nom")+"<br><span class='muted'>"+A.fmtPhone(u.phone)+"</span>"):"—";};
+
+function renderDash(){
+  const now=new Date(), m0=new Date(now.getFullYear(),now.getMonth(),1);
+  const st=USERS.map(statusOf), val=PAYS.filter(p=>p.status==="validated");
+  const month=val.filter(p=>new Date(p.validated_at||p.created_at)>=m0).reduce((a,p)=>a+p.amount_fcfa,0);
+  const total=val.reduce((a,p)=>a+p.amount_fcfa,0), pend=PAYS.filter(p=>p.status==="pending").length;
+  const k=[["Utilisateurs",USERS.length],["Abonnés actifs",st.filter(s=>s==="active").length],["En essai",st.filter(s=>s==="trial").length],["Expirés",st.filter(s=>s==="expired").length],["Paiements à vérifier",pend],["Gagné ce mois",A.fcfa(month)],["Gagné au total",A.fcfa(total)]];
+  $("kpis").innerHTML=k.map(([l,v])=>`<div class="kpi"><span>${l}</span><b>${v}</b></div>`).join("");
+  $("pendBadge").hidden=!pend; $("pendBadge").textContent=pend;
+  const rec=val.slice(0,8);
+  $("recentPays").innerHTML=rec.length?`<tr><th>Client</th><th>Moyen</th><th>Durée</th><th style="text-align:right">Montant</th><th>Date</th></tr>`+rec.map(p=>`<tr><td>${userName(p.user_id)}</td><td>${METHOD[p.method]}</td><td>${p.months} mois</td><td class="num">${A.fcfa(p.amount_fcfa)}</td><td>${dt(p.validated_at)}</td></tr>`).join(""):`<tr><td class="empty">Aucun paiement validé pour l'instant.</td></tr>`;
+}
+function renderPays(){
+  const pend=PAYS.filter(p=>p.status==="pending"), hist=PAYS.filter(p=>p.status!=="pending").slice(0,100);
+  $("pendingTable").innerHTML=pend.length?`<tr><th>Client</th><th>Moyen</th><th>Référence</th><th>Durée</th><th style="text-align:right">Montant</th><th>Déclaré le</th><th></th></tr>`+pend.map(p=>`<tr><td>${userName(p.user_id)}</td><td>${METHOD[p.method]}</td><td><b>${esc(p.reference)}</b></td><td>${p.months} mois</td><td class="num">${A.fcfa(p.amount_fcfa)}</td><td>${dt(p.created_at)}</td><td><div class="actions"><button class="btn ok" data-val="${p.id}">Valider</button><button class="btn bad" data-rej="${p.id}">Refuser</button></div></td></tr>`).join(""):`<tr><td class="empty">Aucun paiement à vérifier.</td></tr>`;
+  $("histTable").innerHTML=hist.length?`<tr><th>Client</th><th>Moyen</th><th>Référence</th><th style="text-align:right">Montant</th><th>Statut</th><th>Date</th></tr>`+hist.map(p=>`<tr><td>${userName(p.user_id)}</td><td>${METHOD[p.method]}</td><td>${esc(p.reference)||"—"}</td><td class="num">${A.fcfa(p.amount_fcfa)}</td><td><span class="pill ${p.status}">${STATUS[p.status]}</span></td><td>${dt(p.validated_at||p.created_at)}</td></tr>`).join(""):`<tr><td class="empty">Aucun historique.</td></tr>`;
+}
+function renderUsers(){
+  const q=$("search").value.trim().toLowerCase().replace(/\s/g,""), f=$("filter").value;
+  const list=USERS.filter(u=>(!f||statusOf(u)===f)&&(!q||(u.full_name||"").toLowerCase().replace(/\s/g,"").includes(q)||u.phone.includes(q.replace(/\D/g,"")||"§")));
+  $("usersTable").innerHTML=list.length?`<tr><th>Client</th><th>Statut</th><th>Jusqu'au</th><th>Inscrit le</th><th>Vu le</th><th></th></tr>`+list.map(u=>{const s=statusOf(u);return `<tr><td>${esc(u.full_name||"Sans nom")}${u.role==="admin"?" <span class='pill active'>Admin</span>":""}<br><span class="muted">${A.fmtPhone(u.phone)}</span></td><td><span class="pill ${s}">${STATUS[s]}</span></td><td>${A.fmtDate(endOf(u))}</td><td>${A.fmtDate(u.created_at)}</td><td>${dt(u.last_seen_at)}</td><td><div class="actions"><button class="btn" data-cash="${u.id}">Enregistrer un paiement</button><button class="btn" data-gift="${u.id}">+7 jours offerts</button>${u.role==="admin"?"":`<button class="btn ${u.blocked?"":"bad"}" data-block="${u.id}" data-to="${!u.blocked}">${u.blocked?"Débloquer":"Bloquer"}</button>`}</div></td></tr>`;}).join(""):`<tr><td class="empty">Aucun utilisateur trouvé.</td></tr>`;
+}
+function renderSettings(){ if(!SETTINGS) return; $("sPrice").value=SETTINGS.price_fcfa; $("sTrial").value=SETTINGS.trial_days; $("sWave").value=SETTINGS.wave_number; $("sOm").value=SETTINGS.om_number; }
+
+async function run(btn,fn){ btn.disabled=true; try{ await fn(); await loadAll(); }catch(e){ alertBox(A.frError(e)); } btn.disabled=false; }
+function alertBox(msg){ $("dlgBody").innerHTML=`<p>${esc(msg)}</p><div class="actions"><button class="btn primary" id="dlgOk">OK</button></div>`; $("dlg").hidden=false; $("dlgOk").onclick=()=>$("dlg").hidden=true; }
+function confirmBox(html,label,onOk){ $("dlgBody").innerHTML=html+`<div class="actions"><button class="btn primary" id="dlgYes">${label}</button><button class="btn" id="dlgNo">Annuler</button></div>`; $("dlg").hidden=false; $("dlgNo").onclick=()=>$("dlg").hidden=true; $("dlgYes").onclick=async()=>{ $("dlg").hidden=true; await onOk(); }; }
+
+document.addEventListener("click",e=>{
+  const b=e.target.closest("button"); if(!b) return;
+  if(b.dataset.val){ const p=PAYS.find(x=>x.id==b.dataset.val); confirmBox(`<h2>Valider ce paiement ?</h2><p>Confirmez que vous avez bien reçu <b>${A.fcfa(p.amount_fcfa)}</b> (référence <b>${esc(p.reference)}</b>). L'abonnement sera prolongé de ${p.months} mois.</p>`,"Oui, j'ai reçu l'argent",()=>run(b,async()=>{const {error}=await sb.rpc("admin_validate_payment",{p_id:p.id,p_ok:true}); if(error) throw error;})); }
+  if(b.dataset.rej){ confirmBox(`<h2>Refuser ce paiement ?</h2><p>À faire seulement si l'argent n'est pas arrivé.</p>`,"Refuser",()=>run(b,async()=>{const {error}=await sb.rpc("admin_validate_payment",{p_id:+b.dataset.rej,p_ok:false}); if(error) throw error;})); }
+  if(b.dataset.gift){ run(b,async()=>{const {error}=await sb.rpc("admin_add_days",{p_user:b.dataset.gift,p_days:7}); if(error) throw error;}); }
+  if(b.dataset.block){ const to=b.dataset.to==="true"; confirmBox(`<h2>${to?"Bloquer":"Débloquer"} ce compte ?</h2><p>${to?"Le client ne pourra plus utiliser le copilote.":"Le client retrouve son accès."}</p>`,to?"Bloquer":"Débloquer",()=>run(b,async()=>{const {error}=await sb.from("profiles").update({blocked:to}).eq("id",b.dataset.block); if(error) throw error;})); }
+  if(b.dataset.cash){ const id=b.dataset.cash; $("dlgBody").innerHTML=`<h2>Paiement reçu en main propre</h2><label class="field">Moyen<select id="cM"><option value="especes">Espèces</option><option value="wave">Wave</option><option value="orange_money">Orange Money</option><option value="autre">Autre</option></select></label><label class="field">Durée<select id="cN"><option value="1">1 mois</option><option value="3">3 mois</option><option value="6">6 mois</option><option value="12">12 mois</option></select></label><label class="field">Note (facultatif)<input id="cR"></label><div class="actions"><button class="btn primary" id="cOk">Enregistrer</button><button class="btn" id="cNo">Annuler</button></div>`; $("dlg").hidden=false; $("cNo").onclick=()=>$("dlg").hidden=true; $("cOk").onclick=()=>{ const m=$("cM").value,n=+$("cN").value,r=$("cR").value; $("dlg").hidden=true; run(b,async()=>{const {error}=await sb.rpc("admin_record_payment",{p_user:id,p_method:m,p_months:n,p_reference:r}); if(error) throw error;}); }; }
+  if(b.dataset.coext){ const c=COMPANIES.find(x=>x.id==b.dataset.coext); $("dlgBody").innerHTML=`<h2>Paiement de ${esc(c.name)}</h2><p>Montant mensuel : <b>${A.fcfa(c.price_per_vehicle*c.max_drivers)}</b> (${c.max_drivers} véhicules × ${A.fcfa(c.price_per_vehicle)}).</p><label class="field">Nombre de mois payés<select id="xN"><option value="1">1 mois</option><option value="3">3 mois</option><option value="6">6 mois</option><option value="12">12 mois</option></select></label><div class="actions"><button class="btn primary" id="xOk">Prolonger l'abonnement</button><button class="btn" id="xNo">Annuler</button></div>`; $("dlg").hidden=false; $("xNo").onclick=()=>$("dlg").hidden=true; $("xOk").onclick=()=>{ const n=+$("xN").value; $("dlg").hidden=true; run(b,async()=>{const {error}=await sb.rpc("admin_company_extend",{p_id:c.id,p_months:n}); if(error) throw error;}); }; }
+  if(b.dataset.comgr){ const c=COMPANIES.find(x=>x.id==b.dataset.comgr); $("dlgBody").innerHTML=`<h2>Responsable de ${esc(c.name)}</h2><p class="muted">Le responsable doit d'abord créer son compte dans l'application. Il verra ensuite l'espace entreprise.</p><label class="field">Son numéro de téléphone<input id="mP" type="tel"></label><div class="actions"><button class="btn primary" id="mOk">Valider</button><button class="btn" id="mNo">Annuler</button></div>`; $("dlg").hidden=false; $("mNo").onclick=()=>$("dlg").hidden=true; $("mOk").onclick=()=>{ const ph=A.normPhone($("mP").value); $("dlg").hidden=true; run(b,async()=>{const {error}=await sb.rpc("admin_set_manager",{p_company:c.id,p_phone:ph}); if(error) throw error;}); }; }
+  if(b.dataset.coedit){ const c=COMPANIES.find(x=>x.id==b.dataset.coedit); $("dlgBody").innerHTML=`<h2>Modifier ${esc(c.name)}</h2><label class="field">Nombre de véhicules<input id="eM" type="number" min="1" value="${c.max_drivers}"></label><label class="field">Prix par véhicule (FCFA)<input id="eP" type="number" min="0" step="500" value="${c.price_per_vehicle}"></label><div class="actions"><button class="btn primary" id="eOk">Enregistrer</button><button class="btn" id="eNo">Annuler</button></div>`; $("dlg").hidden=false; $("eNo").onclick=()=>$("dlg").hidden=true; $("eOk").onclick=()=>{ const m=Math.max(1,+$("eM").value||1), p=Math.max(0,+$("eP").value||0); $("dlg").hidden=true; run(b,async()=>{const {error}=await sb.from("companies").update({max_drivers:m,price_per_vehicle:p}).eq("id",c.id); if(error) throw error;}); }; }
+  if(b.dataset.tab){ document.querySelectorAll(".tabs button").forEach(x=>x.setAttribute("aria-selected",x===b)); ["dash","pays","users","companies","settings"].forEach(t=>$("tab-"+t).hidden=t!==b.dataset.tab); }
+});
+$("coForm").onsubmit=async e=>{ e.preventDefault(); const msg=$("coMsg"); msg.className="";
+  const name=$("cName").value.trim(); if(name.length<2){ msg.className="error"; msg.textContent="Écrivez le nom de l'entreprise."; return; }
+  msg.textContent="Création…";
+  const {data,error}=await sb.rpc("admin_create_company",{p_name:name,p_contact:$("cContact").value.trim(),p_price:+$("cPrice").value||0,p_max:+$("cMax").value||1,p_months:+$("cMonths").value});
+  if(error){ msg.className="error"; msg.textContent=A.frError(error); return; }
+  msg.className="okmsg"; msg.innerHTML=`Entreprise créée. Code à donner aux chauffeurs : <b style="font-size:1.2rem;letter-spacing:.1em">${data}</b>`; $("cName").value=""; $("cContact").value=""; await loadAll(); };
+$("search").oninput=renderUsers; $("filter").onchange=renderUsers;
+$("setForm").onsubmit=async e=>{ e.preventDefault(); const msg=$("setMsg"); msg.className=""; msg.textContent="Enregistrement…";
+  const {error}=await sb.from("settings").update({price_fcfa:+$("sPrice").value||1500,trial_days:Math.max(0,+$("sTrial").value||0),wave_number:$("sWave").value.trim(),om_number:$("sOm").value.trim(),updated_at:new Date().toISOString()}).eq("id",1);
+  if(error){msg.className="error";msg.textContent=A.frError(error);} else {msg.className="okmsg";msg.textContent="Réglages enregistrés."; await loadAll();} };
+$("loginForm").onsubmit=async e=>{ e.preventDefault(); $("lErr").textContent=""; try{ await A.signIn($("lPhone").value,$("lPin").value.trim()); await boot(); }catch(x){ $("lErr").textContent=x.message; } };
+$("logout").onclick=async()=>{ await A.signOut(); location.reload(); };
+setInterval(()=>{ if(!$("main").hidden) loadAll(); },60000);
+boot();
+</script>
+</body>
+</html>

@@ -1,0 +1,519 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0b0f14">
+<title>Copilote Route</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<style>
+:root{--bg:#0b0f14;--surface:#161c23;--fg:#e7ecf1;--muted:#97a4b1;--line:#28313b;--accent:#4f8cff;--safe:#3ccf7d;--warn:#ffb23d;--danger:#ff4d44;color-scheme:dark}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--fg);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-size:16px;line-height:1.5;-webkit-tap-highlight-color:transparent}
+[hidden]{display:none!important}
+.home{min-height:100%;max-width:560px;margin:0 auto;padding:calc(env(safe-area-inset-top,0px) + 24px) max(16px,env(safe-area-inset-right,0px)) calc(env(safe-area-inset-bottom,0px) + 24px) max(16px,env(safe-area-inset-left,0px));display:flex;flex-direction:column;gap:18px}
+.logo{display:flex;align-items:center;gap:12px}
+.logo img{width:48px;height:48px;border-radius:12px}
+h1{font-size:1.8rem;line-height:1.1;margin:0;font-weight:800}
+.lead{color:var(--muted);margin:0}
+.btn{font:inherit;font-weight:700;font-size:1.05rem;padding:16px 18px;border-radius:14px;border:0;background:var(--accent);color:#06101f;cursor:pointer;width:100%;text-align:center;display:block}
+.btn.ghost{background:transparent;color:var(--fg);border:1px solid var(--line)}
+.btn:focus-visible{outline:3px solid #fff;outline-offset:2px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px;display:flex;flex-direction:column;gap:12px}
+.card h2{font-size:1.05rem;margin:0}
+.seg{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.seg button{font:inherit;padding:12px;border-radius:10px;border:1px solid var(--line);background:transparent;color:var(--fg);cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--accent);color:#06101f;border-color:var(--accent);font-weight:700}
+.switch{display:flex;justify-content:space-between;align-items:center;gap:12px}
+.switch input{width:22px;height:22px}
+ol{margin:0;padding-left:1.2em;display:flex;flex-direction:column;gap:6px;color:var(--muted)}
+.warnbox{border-left:4px solid var(--warn);padding:10px 14px;background:#2a2210;border-radius:0 10px 10px 0;font-size:.92rem}
+.status{color:var(--muted);font-size:.9rem;margin:0;min-height:1.4em}
+.field{display:flex;flex-direction:column;gap:6px;font-weight:600;font-size:.95rem}
+.field input,.field select{font:inherit;font-weight:400;font-size:1.05rem;padding:13px 14px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--fg);width:100%}
+.field input:focus,.field select:focus{outline:2px solid var(--accent);outline-offset:1px}
+.hint{color:var(--muted);font-size:.85rem;margin:0}
+.error{color:var(--danger);font-size:.92rem;margin:0;min-height:1.2em}
+.stack{display:flex;flex-direction:column;gap:12px}
+.chip{font:inherit;font-size:.92rem;font-weight:600;align-self:flex-start;padding:8px 14px;border-radius:99px;border:1px solid var(--line);background:var(--surface);color:var(--fg);cursor:pointer}
+.chip.trial{border-color:var(--warn);color:var(--warn)}
+.chip.active{border-color:var(--safe);color:var(--safe)}
+.chip.expired{border-color:var(--danger);color:var(--danger)}
+.link{font:inherit;background:none;border:0;color:var(--muted);text-decoration:underline;cursor:pointer;padding:8px;align-self:center}
+.numbers{display:flex;flex-direction:column;gap:6px;margin:8px 0}
+.numbers div{display:flex;justify-content:space-between;align-items:center;gap:10px;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+.numbers b{font-size:1.1rem;font-variant-numeric:tabular-nums;letter-spacing:.02em}
+.numbers button{font:inherit;font-size:.85rem;padding:6px 10px;border-radius:8px;border:1px solid var(--line);background:transparent;color:var(--fg);cursor:pointer}
+.big{font-size:1.4rem;font-weight:800;margin:0}
+.ok{color:var(--safe)} .ko{color:var(--danger)} .wait{color:var(--warn)}
+/* Mode conduite */
+.drive{position:fixed;inset:0;background:#000}
+.drive video,.drive canvas{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.banner{position:absolute;left:0;right:0;top:0;padding:calc(env(safe-area-inset-top,0px) + 12px) max(16px,env(safe-area-inset-right,0px)) 12px max(16px,env(safe-area-inset-left,0px));display:flex;align-items:center;gap:12px;background:rgba(0,0,0,.55)}
+.banner .lamp{width:20px;height:20px;border-radius:50%;background:var(--safe);flex:none}
+.banner b{font-size:1.3rem}
+.banner .fps{margin-left:auto;font-size:.8rem;color:#ccc;font-variant-numeric:tabular-nums}
+.drive[data-level="warn"] .banner{background:rgba(160,100,0,.85)}
+.drive[data-level="warn"] .lamp{background:var(--warn)}
+.drive[data-level="danger"] .banner{background:var(--danger)}
+.drive[data-level="danger"] .lamp{background:#fff}
+.drive[data-level="danger"]::after{content:"";position:absolute;inset:0;border:10px solid var(--danger);pointer-events:none;animation:pulse .5s infinite alternate}
+@keyframes pulse{from{opacity:1}to{opacity:.35}}
+@media (prefers-reduced-motion:reduce){.drive[data-level="danger"]::after{animation:none}}
+.controls{position:absolute;left:0;right:0;bottom:0;display:flex;gap:10px;padding:12px max(16px,env(safe-area-inset-right,0px)) calc(env(safe-area-inset-bottom,0px) + 12px) max(16px,env(safe-area-inset-left,0px));background:linear-gradient(transparent,rgba(0,0,0,.7))}
+.controls button{flex:1;font:inherit;font-weight:700;padding:14px;border-radius:12px;border:0;cursor:pointer}
+.stop{background:#fff;color:#000}
+.mute{background:rgba(255,255,255,.18);color:#fff}
+</style>
+</head>
+<body>
+
+<!-- Écran : connexion / inscription -->
+<main class="home" id="auth" hidden>
+  <div class="logo"><img src="icon-192.png" alt=""><div><h1>Copilote Route</h1></div></div>
+  <p class="lead">Créez votre compte avec votre numéro de téléphone. Les <b id="trialTxt">7 premiers jours</b> sont gratuits.</p>
+  <div class="seg" id="authTabs">
+    <button aria-pressed="true" data-t="signup">Créer un compte</button>
+    <button aria-pressed="false" data-t="login">J'ai déjà un compte</button>
+  </div>
+  <form class="card" id="authForm" novalidate>
+    <label class="field" id="nameRow">Votre nom<input id="fName" autocomplete="name" placeholder="Ex. : Moussa Diop"></label>
+    <label class="field">Numéro de téléphone<input id="fPhone" type="tel" inputmode="tel" autocomplete="tel" placeholder="77 123 45 67" required></label>
+    <label class="field">Code secret (6 chiffres)<input id="fPin" type="password" inputmode="numeric" maxlength="6" autocomplete="current-password" placeholder="••••••" required></label>
+    <p class="hint" id="pinHint">Choisissez 6 chiffres faciles à retenir pour vous. Ne les donnez à personne.</p>
+    <button class="btn" id="authBtn" type="submit">Créer mon compte</button>
+    <p class="error" id="authErr" role="alert"></p>
+  </form>
+</main>
+
+<!-- Écran : abonnement / paiement -->
+<main class="home" id="pay" hidden>
+  <div class="logo"><img src="icon-192.png" alt=""><div><h1>Mon abonnement</h1></div></div>
+  <div class="card" id="payState"></div>
+  <section class="card" id="companyCard"></section>
+  <section class="card">
+    <h2>Payer par Wave ou Orange Money</h2>
+    <ol>
+      <li>Envoyez <b id="payAmount">1 500 FCFA</b> à ce numéro :
+        <div class="numbers" id="payNumbers"></div></li>
+      <li>Notez la référence de la transaction (dans le SMS de confirmation).</li>
+      <li>Remplissez ci-dessous et touchez « J'ai payé ». Votre accès est activé dès la vérification.</li>
+    </ol>
+    <form id="payForm" class="stack" novalidate>
+      <label class="field">Moyen de paiement
+        <select id="pMethod"><option value="wave">Wave</option><option value="orange_money">Orange Money</option></select></label>
+      <label class="field">Durée
+        <select id="pMonths"><option value="1">1 mois</option><option value="3">3 mois</option><option value="6">6 mois</option><option value="12">12 mois</option></select></label>
+      <label class="field">Référence de la transaction<input id="pRef" placeholder="Ex. : T2610ABCD123"></label>
+      <button class="btn" type="submit" id="payBtn">J'ai payé</button>
+      <p class="error" id="payErr" role="alert"></p>
+    </form>
+  </section>
+  <button class="btn ghost" id="payBack">Retour</button>
+  <button class="link" id="logout2">Se déconnecter</button>
+</main>
+
+<main class="home" id="home" hidden>
+  <div class="logo"><img src="icon-192.png" alt=""><div><h1>Copilote Route</h1></div></div>
+  <button class="chip" id="chip" hidden></button>
+  <div class="warnbox" id="endSoon" hidden></div>
+  <a class="btn ghost" id="adminLink" href="admin.html" hidden>Ouvrir le back-office (administrateur)</a>
+  <a class="btn ghost" id="fleetLink" href="fleet.html" hidden>Ouvrir l'espace entreprise</a>
+  <p class="lead">Fixez le téléphone sur le pare-brise, caméra vers la route. Le copilote surveille les voitures, motos, camions, bus, vélos et piétons devant vous, et vous prévient à voix haute en cas de danger.</p>
+
+  <button class="btn" id="start">Démarrer le copilote</button>
+  <p class="status" id="status">Préparation de la détection…</p>
+
+  <section class="card">
+    <h2>Je conduis</h2>
+    <div class="seg" id="vehicle">
+      <button aria-pressed="true" data-v="car">Une voiture</button>
+      <button aria-pressed="false" data-v="moto">Une moto</button>
+    </div>
+    <label class="switch" for="voice">Alertes vocales<input type="checkbox" id="voice" checked></label>
+    <div class="field" hidden>Langue de la voix
+      <div class="seg" id="lang">
+        <button type="button" aria-pressed="true" data-l="fr">Français</button>
+        <button type="button" aria-pressed="false" data-l="wo">Wolof</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Installation</h2>
+    <ol>
+      <li>Fixez le téléphone au milieu du pare-brise (ou sur le guidon), en mode paysage de préférence.</li>
+      <li>Branchez le chargeur : la caméra consomme beaucoup de batterie.</li>
+      <li>Touchez « Démarrer », autorisez la caméra, puis ne touchez plus le téléphone.</li>
+    </ol>
+    <p class="warnbox">Le copilote aide le conducteur, il ne le remplace pas. Gardez les yeux sur la route et ne manipulez jamais le téléphone en roulant.</p>
+  </section>
+
+  <button class="btn ghost" id="pickBtn">Tester avec une vidéo enregistrée</button>
+  <input type="file" id="pick" accept="video/*" hidden>
+  <button class="link" id="logout">Se déconnecter</button>
+</main>
+
+<section class="drive" id="drive" data-level="safe" hidden>
+  <video id="vid" playsinline muted></video>
+  <canvas id="cv"></canvas>
+  <div class="banner" role="status" aria-live="assertive"><div class="lamp"></div><b id="msg">Route dégagée</b><span class="fps" id="fps"></span></div>
+  <div class="controls"><button class="mute" id="muteBtn">Couper le son</button><button class="stop" id="stopBtn">Arrêter</button></div>
+</section>
+
+<script src="lib/tf.min.js"></script>
+<script src="lib/coco-ssd.min.js"></script>
+<script src="lib/supabase.js"></script>
+<script src="config.js"></script>
+<script src="account.js"></script>
+<script>
+/* ======== Voix : français (voix du téléphone) ou wolof (phrases enregistrées) ======== */
+const VOICE={
+  lang:"fr", // français uniquement pour l'instant (le wolof pourra être ajouté plus tard)
+  clips:{}, ctx:null,
+  // Phrases : clé du fichier audio wolof -> texte français dit par la voix du téléphone
+  fr:{
+    fin_3j:"Attention. Votre abonnement se termine dans 3 jours. Pensez à payer par Wave ou Orange Money.",
+    fin_2j:"Attention. Votre abonnement se termine dans 2 jours. Pensez à payer par Wave ou Orange Money.",
+    fin_1j:"Attention. Votre abonnement se termine demain. Pensez à payer par Wave ou Orange Money.",
+    fin_0j:"Attention. Votre abonnement se termine aujourd'hui. Payez par Wave ou Orange Money pour continuer.",
+    termine:"Votre abonnement est terminé. Le copilote ne peut plus démarrer. Payez par Wave ou Orange Money pour continuer.",
+    fin_entreprise:"Attention. L'abonnement de votre entreprise se termine bientôt. Prévenez votre responsable.",
+    termine_entreprise:"L'abonnement de votre entreprise est terminé. Contactez votre responsable.",
+    termine_route:"Votre abonnement vient de se terminer. Le copilote reste actif jusqu'à la fin de ce trajet.",
+    active:"Copilote activé. Bonne route.",
+    attention:"Attention, obstacle devant.",
+    freinez:"Freinez ! Obstacle devant."
+  }
+};
+async function loadClips(){
+  if(VOICE.lang!=="wo") return;
+  for(const k of Object.keys(VOICE.fr)){
+    if(VOICE.clips[k]) continue;
+    try{ const r=await fetch("voix/wo/"+k+".mp3"); if(r.ok){ VOICE.clips[k]=await r.arrayBuffer(); } }catch(e){}
+  }
+}
+async function say(key,frText){
+  if(typeof muted!=="undefined"&&muted) return;
+  const v=document.getElementById("voice"); if(v&&!v.checked) return;
+  if(VOICE.lang==="wo"&&VOICE.clips[key]){
+    try{
+      VOICE.ctx=VOICE.ctx||(typeof audio!=="undefined"&&audio)||new (window.AudioContext||window.webkitAudioContext)();
+      await VOICE.ctx.resume();
+      const buf=await VOICE.ctx.decodeAudioData(VOICE.clips[key].slice(0));
+      const s=VOICE.ctx.createBufferSource(); s.buffer=buf; s.connect(VOICE.ctx.destination); s.start(); return;
+    }catch(e){}
+  }
+  const txt=frText||VOICE.fr[key]; if(!txt||!window.speechSynthesis) return;
+  try{ speechSynthesis.cancel(); const u=new SpeechSynthesisUtterance(txt); u.lang="fr-FR"; u.rate=1.05; speechSynthesis.speak(u); }catch(e){}
+}
+document.getElementById("lang").onclick=e=>{
+  const b=e.target.closest("button"); if(!b) return; VOICE.lang=b.dataset.l;
+  try{localStorage.setItem("copilote-lang",VOICE.lang);}catch(err){}
+  [...document.getElementById("lang").children].forEach(x=>x.setAttribute("aria-pressed",x===b));
+  loadClips().then(()=>say("active"));
+};
+[...document.getElementById("lang").children].forEach(x=>x.setAttribute("aria-pressed",x.dataset.l===VOICE.lang));
+loadClips();
+
+// Annonce de fin d'abonnement : une fois par jour au maximum, à l'ouverture et au démarrage
+function endKey(){
+  if(!ACCESS) return null;
+  if(ACCESS.status==="expired") return ACCESS.company?"termine_entreprise":"termine";
+  if(ACCESS.status==="blocked") return null;
+  const d=ACCESS.ends_at?A.daysLeft(ACCESS.ends_at):99;
+  if(d>3) return null;
+  // jours restants au sens du calendrier
+  const end=new Date(ACCESS.ends_at), t=new Date(); t.setHours(0,0,0,0); const e=new Date(end); e.setHours(0,0,0,0);
+  const cal=Math.round((e-t)/864e5);
+  if(ACCESS.company) return cal<=2?"fin_entreprise":null;
+  return cal<=0?"fin_0j":cal===1?"fin_1j":cal===2?"fin_2j":"fin_3j";
+}
+function renderEndSoon(){
+  const el=document.getElementById("endSoon"), k=endKey();
+  if(!k||k.startsWith("termine")){ el.hidden=true; return; }
+  el.hidden=false; el.textContent=VOICE.fr[k];
+}
+function announceEnd(force){
+  const k=endKey(); if(!k) return;
+  const tag=k+":"+new Date().toDateString();
+  try{ if(!force&&localStorage.getItem("copilote-annonce")===tag) return; localStorage.setItem("copilote-annonce",tag); }catch(e){}
+  say(k);
+}
+
+/* ======== Comptes et abonnement ======== */
+const A=window.Account;
+let ACCESS=null, authMode="signup";
+function show(id){ ["auth","pay","home"].forEach(x=>document.getElementById(x).hidden=(x!==id)); window.scrollTo(0,0); }
+
+function renderChip(){
+  const c=document.getElementById("chip"); if(!ACCESS){c.hidden=true;return;}
+  c.hidden=false; c.className="chip "+ACCESS.status;
+  const d=ACCESS.ends_at?A.daysLeft(ACCESS.ends_at):0;
+  if(ACCESS.company&&ACCESS.status==="active"){ c.textContent="Couvert par "+ACCESS.company; return; }
+  c.textContent={trial:`Essai gratuit : ${d} jour${d>1?"s":""} restant${d>1?"s":""}`,active:`Abonné jusqu'au ${A.fmtDate(ACCESS.ends_at)}`,expired:"Abonnement terminé · Payer",blocked:"Compte bloqué",unknown:"Compte introuvable"}[ACCESS.status]||"Mon abonnement";
+}
+function canDrive(){ return ACCESS&&(ACCESS.status==="trial"||ACCESS.status==="active"); }
+
+function renderPay(){
+  const a=ACCESS||{}; const st=document.getElementById("payState");
+  const d=a.ends_at?A.daysLeft(a.ends_at):0;
+  const lines={
+    trial:`<p class="big wait">Essai gratuit</p><p>Il vous reste <b>${d} jour${d>1?"s":""}</b> (jusqu'au ${A.fmtDate(a.ends_at)}). Vous pouvez déjà payer pour continuer sans interruption.</p>`,
+    active:`<p class="big ok">Abonnement actif</p><p>Jusqu'au <b>${A.fmtDate(a.ends_at)}</b>. Un nouveau paiement s'ajoute à la suite.</p>`,
+    expired:`<p class="big ko">Accès terminé</p><p>Votre essai ou votre abonnement est terminé. Payez pour réactiver le copilote.</p>`,
+    blocked:`<p class="big ko">Compte bloqué</p><p>Contactez le service Copilote Route.</p>`,
+    unknown:`<p class="big ko">Compte introuvable</p>`
+  };
+  st.innerHTML=(lines[a.status]||"")+`<p class="hint">Compte : ${A.fmtPhone(a.phone)}</p>`+(a.pending?`<p class="wait"><b>${a.pending} paiement${a.pending>1?"s":""} en cours de vérification.</b></p>`:"")+(a.offline?`<p class="hint">Hors ligne : dernier statut connu.</p>`:"");
+  const months=+document.getElementById("pMonths").value||1;
+  document.getElementById("payAmount").textContent=A.fcfa((a.price_fcfa||1500)*months);
+  const nums=[];
+  if(a.wave_number) nums.push(["Wave",a.wave_number]);
+  if(a.om_number) nums.push(["Orange Money",a.om_number]);
+  renderCompany();
+  document.getElementById("payNumbers").innerHTML=nums.length?nums.map(([n,v])=>`<div><span>${n}<br><b>${v}</b></span><button type="button" data-copy="${v}">Copier</button></div>`).join(""):`<div><span>Numéro bientôt disponible</span></div>`;
+}
+function renderCompany(){
+  const a=ACCESS||{}, el=document.getElementById("companyCard");
+  if(!A.configured){ el.hidden=true; return; } el.hidden=false;
+  const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+  if(a.company){
+    el.innerHTML=`<h2>Mon entreprise</h2><p>Vous êtes ${a.company_role==="manager"?"<b>responsable</b>":"chauffeur"} chez <b>${esc(a.company)}</b>. L'abonnement est payé par l'entreprise.</p>${a.company_role==="manager"?`<a class="btn" href="fleet.html">Ouvrir l'espace entreprise</a>`:""}<button class="link" id="leaveCo" type="button">Quitter cette entreprise</button><p class="error" id="coErr"></p>`;
+    document.getElementById("leaveCo").onclick=async()=>{ try{ await A.leaveCompany(); await refreshAccess(); renderPay(); }catch(x){ document.getElementById("coErr").textContent=x.message; } };
+  }else{
+    el.innerHTML=`<h2>Vous conduisez pour une entreprise ?</h2><p class="hint">Entrez le code donné par votre responsable. L'entreprise paie votre abonnement.</p><form class="stack" id="coForm" novalidate><label class="field">Code entreprise<input id="coCode" maxlength="6" autocapitalize="characters" placeholder="Ex. : 4K7P2X"></label><button class="btn ghost" type="submit">Rejoindre mon entreprise</button><p class="error" id="coErr" role="alert"></p></form>`;
+    document.getElementById("coForm").onsubmit=async e=>{ e.preventDefault(); const err=document.getElementById("coErr"); err.textContent="";
+      try{ const name=await A.joinCompany(document.getElementById("coCode").value); await refreshAccess(); renderPay(); if(canDrive()) show("home"); }catch(x){ err.textContent=x.message; } };
+  }
+}
+
+/* ======== Trajets et alertes (pour le score et l'espace entreprise) ======== */
+let TRIP=null, geoWatch=null, lastPos=null, curPos=null;
+function hav(a,b){ const R=6371, r=x=>x*Math.PI/180, dLa=r(b.lat-a.lat), dLo=r(b.lng-a.lng); const h=Math.sin(dLa/2)**2+Math.cos(r(a.lat))*Math.cos(r(b.lat))*Math.sin(dLo/2)**2; return 2*R*Math.asin(Math.sqrt(h)); }
+function startTrip(live){
+  if(!A.configured||!live) return;
+  TRIP={id:A.uid(),start:new Date().toISOString(),end:new Date().toISOString(),km:0,done:false}; lastPos=null; curPos=null;
+  if(navigator.geolocation){ try{ geoWatch=navigator.geolocation.watchPosition(p=>{
+      const c={lat:p.coords.latitude,lng:p.coords.longitude,acc:p.coords.accuracy,speed:p.coords.speed}; curPos=c;
+      if(c.acc>60) return;
+      if(lastPos){ const d=hav(lastPos,c); if(d>0.01&&d<2) TRIP.km+=d; }
+      lastPos=c;
+    },()=>{}, {enableHighAccuracy:true,maximumAge:5000}); }catch(e){} }
+  A.queueTrip(TRIP);
+}
+function endTrip(){
+  if(geoWatch!==null){ try{navigator.geolocation.clearWatch(geoWatch);}catch(e){} geoWatch=null; }
+  if(!TRIP) return; TRIP.end=new Date().toISOString(); TRIP.done=true; TRIP.km=Math.round(TRIP.km*10)/10;
+  A.queueTrip(TRIP); TRIP=null; A.flush();
+}
+function logAlert(level,item){
+  if(!TRIP) return;
+  A.queueAlert({level,object:item?item.class:"",ttc:item&&isFinite(item.ttc)?Math.round(item.ttc*10)/10:null,
+    lat:curPos?curPos.lat:null,lng:curPos?curPos.lng:null,speed:curPos&&curPos.speed!=null?Math.round(curPos.speed*3.6):null});
+}
+setInterval(()=>{ if(TRIP){ TRIP.end=new Date().toISOString(); TRIP.km=Math.round(TRIP.km*10)/10; A.queueTrip(TRIP); } A.flush(); },30000);
+window.addEventListener("online",()=>A.flush());
+
+document.getElementById("pMonths").onchange=renderPay;
+document.getElementById("payNumbers").onclick=async e=>{const b=e.target.closest("[data-copy]"); if(!b) return; try{await navigator.clipboard.writeText(b.dataset.copy); b.textContent="Copié";}catch(err){b.textContent=b.dataset.copy;}};
+
+function renderLinks(){
+  // Visible uniquement pour vous (administrateur) et pour les responsables de flotte ; la page elle-même revérifie le rôle.
+  document.getElementById("adminLink").hidden=!(ACCESS&&ACCESS.role==="admin");
+  document.getElementById("fleetLink").hidden=!(ACCESS&&ACCESS.company_role==="manager");
+}
+async function refreshAccess(){ ACCESS=await A.access(); renderChip(); renderEndSoon(); renderLinks(); return ACCESS; }
+
+async function boot(){
+  if(!A.configured){ show("home"); document.getElementById("status").textContent="Mode démonstration : comptes non configurés."; ACCESS={status:"trial",ends_at:new Date(Date.now()+7*864e5).toISOString()}; renderChip(); return; }
+  const s=await A.session();
+  if(!s){ show("auth"); return; }
+  try{ await refreshAccess(); }catch(e){ document.getElementById("status").textContent=e.message; }
+  show(canDrive()?"home":"pay"); if(!canDrive()) renderPay();
+  // Annonce à la première interaction (les navigateurs bloquent le son avant)
+  document.addEventListener("pointerdown",()=>announceEnd(false),{once:true});
+}
+
+document.getElementById("authTabs").onclick=e=>{
+  const b=e.target.closest("button"); if(!b) return; authMode=b.dataset.t;
+  [...document.getElementById("authTabs").children].forEach(x=>x.setAttribute("aria-pressed",x===b));
+  document.getElementById("nameRow").hidden=authMode!=="signup";
+  document.getElementById("pinHint").hidden=authMode!=="signup";
+  document.getElementById("authBtn").textContent=authMode==="signup"?"Créer mon compte":"Me connecter";
+  document.getElementById("authErr").textContent="";
+};
+document.getElementById("authForm").onsubmit=async e=>{
+  e.preventDefault(); const btn=document.getElementById("authBtn"), err=document.getElementById("authErr");
+  err.textContent=""; btn.disabled=true; const old=btn.textContent; btn.textContent="Patientez…";
+  try{
+    const ph=document.getElementById("fPhone").value, pin=document.getElementById("fPin").value.trim();
+    if(authMode==="signup") await A.signUp(ph,pin,document.getElementById("fName").value); else await A.signIn(ph,pin);
+    await boot();
+  }catch(x){ err.textContent=x.message; }
+  btn.disabled=false; btn.textContent=old;
+};
+document.getElementById("payForm").onsubmit=async e=>{
+  e.preventDefault(); const err=document.getElementById("payErr"), btn=document.getElementById("payBtn"); err.textContent="";
+  const ref=document.getElementById("pRef").value.trim();
+  if(ref.length<4){ err.textContent="Écrivez la référence de la transaction (dans le SMS reçu)."; return; }
+  btn.disabled=true; btn.textContent="Envoi…";
+  try{ await A.declarePayment(document.getElementById("pMethod").value,ref,+document.getElementById("pMonths").value); document.getElementById("pRef").value=""; await refreshAccess(); renderPay(); err.className="ok"; err.textContent="Merci ! Votre paiement est en cours de vérification."; }
+  catch(x){ err.className="error"; err.textContent=x.message; }
+  btn.disabled=false; btn.textContent="J'ai payé";
+};
+document.getElementById("chip").onclick=async()=>{ try{await refreshAccess();}catch(e){} renderPay(); show("pay"); };
+document.getElementById("payBack").onclick=async()=>{ try{await refreshAccess();}catch(e){} if(canDrive()) show("home"); else renderPay(); };
+const doLogout=async()=>{ await A.signOut(); ACCESS=null; show("auth"); };
+document.getElementById("logout").onclick=doLogout; document.getElementById("logout2").onclick=doLogout;
+// Vérifie l'abonnement toutes les 10 minutes. Par sécurité, on n'arrête JAMAIS le copilote en pleine route :
+// on prévient le chauffeur, et le blocage s'applique au prochain démarrage.
+let endedDuringTrip=false;
+setInterval(async()=>{ if(A.configured&&ACCESS){ const was=canDrive(); try{await refreshAccess();}catch(e){}
+  if(was&&!canDrive()&&running&&!endedDuringTrip){ endedDuringTrip=true; say("termine_route"); } } },600000);
+boot();
+</script>
+<script>
+const $=id=>document.getElementById(id);
+const vid=$("vid"), cv=$("cv"), ctx=cv.getContext("2d");
+const NAMES={car:"Voiture",truck:"Camion",bus:"Bus",motorcycle:"Moto",bicycle:"Vélo",person:"Piéton"};
+const COLORS={safe:"#3ccf7d",warn:"#ffb23d",danger:"#ff4d44"};
+let model=null, running=false, stream=null, audio=null, wake=null, muted=false, vehicle="car";
+let lastLevel="safe", lastBeep=0, lastSpeak=0, frames=0, fpsT=performance.now();
+
+if("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(()=>{});
+
+(async()=>{
+  try{
+    await tf.ready();
+    model=await cocoSsd.load({base:"lite_mobilenet_v2",modelUrl:"model/model.json"});
+    $("status").textContent="Prêt. Fonctionne aussi sans internet une fois chargé.";
+  }catch(e){ $("status").textContent="La détection n'a pas pu se charger. Vérifiez la connexion et rouvrez l'application."; }
+})();
+
+$("vehicle").onclick=e=>{const b=e.target.closest("button"); if(!b) return; vehicle=b.dataset.v; [...$("vehicle").children].forEach(x=>x.setAttribute("aria-pressed",x===b));};
+
+/* ----- Évaluation du danger ----- */
+const tracks=[];
+function assess(dets,W,H,t){
+  // Zone "devant moi" : plus étroite pour une moto
+  const zl=vehicle==="moto"?0.34:0.28, zr=1-zl;
+  const out=[];
+  for(const d of dets){
+    const [x,y,w,h]=d.bbox, cx=(x+w/2)/W, hr=h/H, wr=w/W;
+    let best=null,bd=1e9;
+    for(const tr of tracks){const dd=Math.abs(tr.cx-cx)+Math.abs(tr.hr-hr); if(tr.cls===d.class&&dd<bd&&dd<0.25){bd=dd;best=tr;}}
+    let g=0;
+    if(best){const dt=(t-best.t)/1000; const raw=dt>0?(hr-best.hr)/dt:0; best.g=best.g*0.6+raw*0.4; g=best.g; Object.assign(best,{cx,hr,t});}
+    else tracks.push({cls:d.class,cx,hr,t,g:0});
+    const ahead=cx>zl&&cx<zr;
+    const size=Math.max(hr,wr*0.8);
+    const ttc=g>0.005?hr/g:Infinity;
+    let lvl="safe";
+    if(ahead&&(size>0.55||ttc<1.6)) lvl="danger";
+    else if(ahead&&(size>0.35||ttc<3)) lvl="warn";
+    out.push({...d,lvl,ttc,ahead});
+  }
+  for(let i=tracks.length-1;i>=0;i--) if(t-tracks[i].t>1500) tracks.splice(i,1);
+  return out;
+}
+
+/* ----- Alertes ----- */
+function beep(freq){ if(muted||!audio) return; try{const o=audio.createOscillator(),g=audio.createGain();o.type="square";o.frequency.value=freq;o.connect(g);g.connect(audio.destination);const t=audio.currentTime;g.gain.setValueAtTime(0.0001,t);g.gain.exponentialRampToValueAtTime(0.5,t+0.02);g.gain.exponentialRampToValueAtTime(0.0001,t+0.22);o.start(t);o.stop(t+0.25);}catch(e){} }
+function speak(txt){
+  if(VOICE.lang==="wo"&&!muted&&$("voice").checked){ const k=/Freinez/i.test(txt)?"freinez":/Attention/i.test(txt)?"attention":/activé/i.test(txt)?"active":null; if(k&&VOICE.clips[k]){ say(k); return; } }
+  if(muted||!$("voice").checked||!window.speechSynthesis) return; try{speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(txt);u.lang="fr-FR";u.rate=1.15;u.volume=1;speechSynthesis.speak(u);}catch(e){} }
+function alertLevel(level,items){
+  const now=performance.now();
+  $("drive").dataset.level=level;
+  const msg={safe:"Route dégagée",warn:"Attention devant",danger:"FREINEZ !"};
+  $("msg").textContent=msg[level];
+  if(level==="danger"){
+    if(now-lastBeep>450){beep(1200);lastBeep=now;}
+    try{navigator.vibrate&&navigator.vibrate(150);}catch(e){}
+    if(lastLevel!=="danger") logAlert("danger",items.find(i=>i.lvl==="danger"));
+    if(lastLevel!=="danger"&&now-lastSpeak>2500){const it=items.find(i=>i.lvl==="danger");speak("Freinez ! "+(it?NAMES[it.class]:"obstacle")+" devant");lastSpeak=now;}
+  }else if(level==="warn"&&lastLevel==="safe"&&now-lastSpeak>4000){
+    logAlert("warn",items.find(i=>i.lvl==="warn"));
+    beep(700); const it=items.find(i=>i.lvl==="warn"); speak("Attention, "+(it?NAMES[it.class].toLowerCase():"obstacle")); lastSpeak=now;
+  }
+  lastLevel=level;
+}
+
+/* ----- Dessin ----- */
+function draw(items,W,H){
+  const r=cv.getBoundingClientRect(), dpr=Math.min(devicePixelRatio||1,2);
+  if(cv.width!==Math.round(r.width*dpr)){cv.width=Math.round(r.width*dpr);cv.height=Math.round(r.height*dpr);}
+  // object-fit: cover
+  const s=Math.max(cv.width/W,cv.height/H), ox=(cv.width-W*s)/2, oy=(cv.height-H*s)/2;
+  ctx.clearRect(0,0,cv.width,cv.height);
+  ctx.font=`700 ${Math.round(15*dpr)}px system-ui,sans-serif`;
+  for(const it of items){
+    const [x,y,w,h]=it.bbox, X=ox+x*s, Y=oy+y*s, Wd=w*s, Ht=h*s;
+    ctx.lineWidth=(it.lvl==="danger"?5:3)*dpr; ctx.strokeStyle=COLORS[it.lvl]; ctx.strokeRect(X,Y,Wd,Ht);
+    const label=NAMES[it.class]+(it.ahead&&isFinite(it.ttc)&&it.ttc<5?" · "+it.ttc.toFixed(1)+" s":"");
+    const tw=ctx.measureText(label).width+12*dpr, th=24*dpr;
+    ctx.fillStyle=COLORS[it.lvl]; ctx.fillRect(X,Math.max(0,Y-th),tw,th);
+    ctx.fillStyle="#000"; ctx.fillText(label,X+6*dpr,Math.max(th-7*dpr,Y-7*dpr));
+  }
+}
+
+/* ----- Boucle ----- */
+async function loop(){
+  if(!running) return;
+  if(vid.readyState>=2&&!vid.paused&&model){
+    const W=vid.videoWidth,H=vid.videoHeight;
+    try{
+      const preds=await model.detect(vid,20,0.45);
+      const dets=preds.filter(p=>NAMES[p.class]);
+      const items=assess(dets,W,H,performance.now());
+      draw(items,W,H);
+      const lvl=items.some(i=>i.lvl==="danger")?"danger":items.some(i=>i.lvl==="warn")?"warn":"safe";
+      alertLevel(lvl,items);
+      frames++; const now=performance.now(); if(now-fpsT>1000){$("fps").textContent=frames+" images/s";frames=0;fpsT=now;}
+    }catch(e){}
+  }
+  requestAnimationFrame(loop);
+}
+
+async function enterDrive(live){
+  startTrip(!!live);
+  try{audio=audio||new (window.AudioContext||window.webkitAudioContext)();audio.resume();}catch(e){}
+  try{speechSynthesis&&speechSynthesis.speak(new SpeechSynthesisUtterance(""));}catch(e){}
+  $("home").hidden=true; $("drive").hidden=false; tracks.length=0; lastLevel="safe";
+  try{await document.documentElement.requestFullscreen();}catch(e){}
+  try{wake=await navigator.wakeLock.request("screen");}catch(e){}
+  if(!model){$("msg").textContent="Chargement de la détection…";}
+  running=true; loop();
+}
+async function gate(){
+  if(A.configured){ try{await refreshAccess();}catch(e){} }
+  if(!canDrive()){ renderPay(); show("pay"); announceEnd(true); return false; }
+  return true;
+}
+$("start").onclick=async()=>{
+  if(!(await gate())) return;
+  try{
+    stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:"environment"},width:{ideal:1280},height:{ideal:720}},audio:false});
+  }catch(e){ $("status").textContent="La caméra est refusée. Autorisez-la dans les réglages du navigateur, puis réessayez."; return; }
+  vid.srcObject=stream; vid.loop=false; await vid.play().catch(()=>{});
+  await enterDrive(true); endedDuringTrip=false;
+  const k=endKey(); if(k&&k.startsWith("fin_")){ say(k); setTimeout(()=>say("active"),7000); } else say("active");
+};
+$("pickBtn").onclick=async()=>{ if(await gate()) $("pick").click(); };
+$("pick").onchange=async e=>{const f=e.target.files[0]; if(!f) return; vid.srcObject=null; vid.src=URL.createObjectURL(f); vid.loop=true; await vid.play().catch(()=>{}); await enterDrive();};
+$("stopBtn").onclick=()=>{
+  running=false; endTrip(); if(stream){stream.getTracks().forEach(t=>t.stop());stream=null;}
+  vid.pause(); vid.removeAttribute("src"); vid.srcObject=null;
+  try{wake&&wake.release();}catch(e){} try{document.fullscreenElement&&document.exitFullscreen();}catch(e){}
+  try{speechSynthesis.cancel();}catch(e){}
+  $("drive").hidden=true; show("home"); $("drive").dataset.level="safe"; $("pick").value="";
+};
+$("muteBtn").onclick=()=>{muted=!muted; $("muteBtn").textContent=muted?"Remettre le son":"Couper le son"; if(muted) try{speechSynthesis.cancel();}catch(e){}};
+document.addEventListener("visibilitychange",async()=>{ if(document.visibilityState==="visible"&&running){try{wake=await navigator.wakeLock.request("screen");}catch(e){}} });
+</script>
+</body>
+</html>
