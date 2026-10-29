@@ -30,6 +30,12 @@ GPS incrusté sur les vidéos, alerte d'excès de vitesse, démarrage automatiqu
 Essai 7 jours, puis 1 500 FCFA/mois (réglable dans le back-office). Paiement Wave / Orange Money
 déclaré par le client puis validé à la main par l'admin. Abonnement flotte : prix par véhicule, code entreprise à 6 caractères.
 
+## En pause
+- Conditions d'utilisation (`conditions.html`, brouillon prêt mais non relié) et case d'acceptation à l'inscription
+  (`CGU_OFF=true` dans index.html). À réactiver quand Gorgui fournit : nom d'entreprise, NINEA, adresse, contact,
+  conditions de remboursement, durée de conservation des trajets/alertes, numéro de déclaration CDP.
+  En réactivant, remettre `cgu_version` / `cgu_accepted_at` dans les métadonnées d'inscription (account.js).
+
 ## Idées en attente
 - Paiement automatique via API Wave Business / Orange Money ou agrégateur (PayTech, PayDunya, CinetPay) :
   clés à mettre par Gorgui dans les secrets Supabase (Edge Functions), jamais dans le chat ni le dépôt.

@@ -34,7 +34,7 @@
     const p = normPhone(phone);
     if (!validPhone(p)) throw new Error("Numéro de téléphone invalide.");
     if (!/^\d{6}$/.test(pin)) throw new Error("Le code secret doit avoir exactement 6 chiffres.");
-    const { error } = await sb.auth.signUp({ email: emailOf(p), password: pin, options: { data: { phone: p, full_name: (name || "").trim(), cgu_version: "2026-10-29", cgu_accepted_at: new Date().toISOString() } } });
+    const { error } = await sb.auth.signUp({ email: emailOf(p), password: pin, options: { data: { phone: p, full_name: (name || "").trim() } } });
     if (error) throw new Error(frError(error));
     const { data } = await sb.auth.getSession();
     if (!data.session) await signIn(p, pin);
