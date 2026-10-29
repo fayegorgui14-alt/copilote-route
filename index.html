@@ -61,6 +61,10 @@ a.link{text-align:center}
 .cd{font-size:5rem;font-weight:800;margin:0;line-height:1;font-variant-numeric:tabular-nums}
 .spd{white-space:nowrap;font-weight:800;font-size:1rem;font-variant-numeric:tabular-nums;background:rgba(0,0,0,.35);padding:2px 8px;border-radius:8px}
 .spd.over{background:#ff4d44;color:#fff}
+.prep{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);background:rgba(0,0,0,.75);color:#fff;padding:18px 20px;border-radius:14px;display:flex;flex-direction:column;align-items:center;gap:8px;text-align:center;width:min(86%,340px);z-index:4}
+.prep span{font-size:.88rem;color:#cfd7df}
+.spinner{width:34px;height:34px;border-radius:50%;border:4px solid rgba(255,255,255,.25);border-top-color:#fff;animation:spin 1s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
 .soundbtn{position:absolute;left:50%;top:45%;transform:translate(-50%,-50%);font:inherit;font-weight:800;font-size:1.1rem;padding:18px 22px;border-radius:14px;border:0;background:#ffb23d;color:#111;z-index:5;max-width:90%}
 .rec{white-space:nowrap;color:#ff4d44;font-weight:800;font-size:.85rem;animation:pulse 1s infinite alternate}
 .player{width:100%;max-width:100%;border-radius:12px;background:#000}
@@ -226,6 +230,7 @@ a.link{text-align:center}
   <video id="vid" playsinline muted></video>
   <canvas id="cv"></canvas>
   <div class="banner" role="status" aria-live="assertive"><div class="lamp"></div><b id="msg">Route dégagée</b><span class="rec" id="recDot" hidden>● REC</span><span class="spd" id="spd"></span><span class="fps" id="fps"></span></div>
+  <div class="prep" id="prep" hidden><div class="spinner"></div><b>Préparation de la détection…</b><span>La première fois peut prendre jusqu'à 30 secondes. Ne quittez pas l'application.</span></div>
   <button class="soundbtn" id="soundBtn" type="button" hidden>🔊 Touchez ici pour activer le son</button>
   <div class="controls"><button class="mute" id="muteBtn">Couper le son</button><button class="stop" id="stopBtn">Arrêter</button></div>
 </section>
@@ -456,19 +461,47 @@ const $=id=>document.getElementById(id);
 const vid=$("vid"), cv=$("cv"), ctx=cv.getContext("2d");
 const NAMES={car:"Voiture",truck:"Camion",bus:"Bus",motorcycle:"Moto",bicycle:"Vélo",person:"Piéton"};
 const COLORS={safe:"#3ccf7d",warn:"#ffb23d",danger:"#ff4d44"};
-let lastDetCount=0, lastErr="";
+let lastDetCount=0, lastErr="", detecting=false, lastDetOk=0, detErrors=0;
 let model=null, running=false, stream=null, audio=null, wake=null, muted=false, vehicle="car";
 let lastLevel="safe", lastBeep=0, lastSpeak=0, frames=0, fpsT=performance.now();
 
 if("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(()=>{});
 
-(async()=>{
-  try{
-    await tf.ready();
-    model=await cocoSsd.load({base:"lite_mobilenet_v2",modelUrl:"model/model.json"});
-    $("status").textContent="Prêt. Fonctionne aussi sans internet une fois chargé.";
-  }catch(e){ $("status").textContent="La détection n'a pas pu se charger. Vérifiez la connexion et rouvrez l'application."; }
-})();
+/* ----- Chargement de la détection -----
+   Le modèle est chargé, puis « préchauffé » sur une image vide : la toute première analyse
+   est très lente sur téléphone (préparation de la carte graphique). Si l'analyse se bloque,
+   le modèle est rechargé automatiquement, sans quitter l'application. */
+let modelReady=false, modelLoading=null, modelGen=0, lastReinit=0;
+function initModel(){
+  if(modelLoading) return modelLoading;
+  modelReady=false;
+  modelLoading=(async()=>{
+    try{
+      $("status").textContent="Préparation de la détection…";
+      try{ if(tf.getBackend()!=="webgl") await tf.setBackend("webgl"); }catch(e){}
+      await tf.ready();
+      const m=await cocoSsd.load({base:"lite_mobilenet_v2",modelUrl:"model/model.json"});
+      const c=document.createElement("canvas"); c.width=320; c.height=240; c.getContext("2d").fillRect(0,0,320,240);
+      await withTimeout(m.detect(c),45000);   // préchauffage
+      model=m; modelReady=true; modelGen++;
+      $("status").textContent="Prêt. Fonctionne aussi sans internet une fois chargé.";
+    }catch(e){
+      $("status").textContent="La détection n'a pas pu démarrer. Elle va réessayer toute seule…";
+      setTimeout(()=>{ modelLoading=null; initModel(); },3000);
+    }finally{ if(modelReady) modelLoading=null; }
+  })();
+  return modelLoading;
+}
+function withTimeout(p,ms){ return Promise.race([p,new Promise((_,rej)=>setTimeout(()=>rej(new Error("délai dépassé")),ms))]); }
+async function reinitModel(reason){
+  const now=performance.now(); if(now-lastReinit<15000) return; lastReinit=now;
+  try{ $("fps").textContent="Relance de la détection…"; }catch(e){}
+  const old=model; model=null; modelReady=false; modelLoading=null;
+  try{ old&&old.dispose&&old.dispose(); }catch(e){}
+  try{ tf.engine().endScope&&tf.disposeVariables&&tf.disposeVariables(); }catch(e){}
+  await initModel();
+}
+initModel();
 
 $("vehicle").onclick=e=>{const b=e.target.closest("button"); if(!b) return; vehicle=b.dataset.v; [...$("vehicle").children].forEach(x=>x.setAttribute("aria-pressed",x===b));};
 
@@ -625,10 +658,16 @@ function draw(items,W,H){
 /* ----- Boucle ----- */
 async function loop(){
   if(!running) return;
-  if(vid.readyState>=2&&!vid.paused&&model){
+  // surveillance : aucune analyse réussie depuis 10 s alors que tout est prêt → on relance
+  if(model&&modelReady&&vid.readyState>=2&&!vid.paused&&!detecting&&lastDetOk&&performance.now()-lastDetOk>10000) reinitModel("bloqué");
+  if(vid.readyState>=2&&!vid.paused&&model&&modelReady&&!detecting){
     const W=vid.videoWidth,H=vid.videoHeight;
     try{
-      const preds=await model.detect(vid,20,0.45);
+      detecting=true; const gen=modelGen;
+      // la première analyse de la vidéo peut être lente (jusqu'à 25 s), les suivantes doivent être rapides
+      const preds=await withTimeout(model.detect(vid,20,0.45),lastDetOk?6000:25000);
+      detecting=false; if(gen!==modelGen) { requestAnimationFrame(loop); return; }
+      lastDetOk=performance.now(); detErrors=0; $("prep").hidden=true;
       const dets=preds.filter(p=>NAMES[p.class]);
       const items=assess(dets,W,H,performance.now());
       draw(items,W,H);
@@ -636,7 +675,8 @@ async function loop(){
       alertLevel(lvl,items);
       frames++; lastDetCount=dets.length; const now=performance.now(); if(now-fpsT>1000){$("fps").textContent=frames+" img/s · "+lastDetCount+" obj.";frames=0;fpsT=now;}
       lastErr="";
-    }catch(e){ lastErr=String(e&&e.message||e).slice(0,80); $("fps").textContent="Erreur : "+lastErr; }
+    }catch(e){ detecting=false; detErrors++; lastErr=String(e&&e.message||e).slice(0,80); $("fps").textContent="Erreur : "+lastErr;
+      if(detErrors>=3||/délai|context|webgl/i.test(lastErr)) reinitModel(lastErr); }
   }else if(running){
     const now=performance.now(); if(now-fpsT>1500){ fpsT=now; $("fps").textContent=!model?"Chargement de la détection…":vid.paused?"Caméra en pause":"Caméra en attente…"; if(vid.paused&&(vid.srcObject||vid.src)) vid.play().catch(()=>{}); }
   }
@@ -650,7 +690,9 @@ async function enterDrive(live){
   $("home").hidden=true; $("drive").hidden=false; tracks.length=0; lastLevel="safe"; shownLevel="safe"; levelHoldUntil=0; lastInfoSpeak=0;
   try{await document.documentElement.requestFullscreen();}catch(e){}
   try{wake=await navigator.wakeLock.request("screen");}catch(e){}
-  if(!model){$("msg").textContent="Chargement de la détection…";}
+  lastDetOk=0; detErrors=0; detecting=false;
+  $("prep").hidden=false;
+  if(!modelReady) initModel();
   running=true; loop();
 }
 async function gate(){
@@ -671,7 +713,7 @@ $("start").onclick=async()=>{
 };
 $("pickBtn").onclick=async()=>{ if(await gate()) $("pick").click(); };
 $("pick").onchange=async e=>{const f=e.target.files[0]; if(!f) return; vid.srcObject=null; vid.src=URL.createObjectURL(f); vid.loop=true; await vid.play().catch(()=>{}); await enterDrive();};
-$("stopBtn").onclick=()=>{
+$("stopBtn").onclick=()=>{ $("prep").hidden=true;
   running=false; endTrip(); try{ DashRec.stop(); }catch(e){}
   // laisse le temps au dernier morceau de vidéo d'être enregistré avant de couper la caméra
   const st=stream; stream=null; if(st) setTimeout(()=>st.getTracks().forEach(t=>t.stop()),800);
