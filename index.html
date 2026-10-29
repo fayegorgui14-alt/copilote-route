@@ -498,7 +498,7 @@ const tracks=[];
 // Sensibilité choisie par le conducteur : agit sur les seuils de temps
 function sensK(){ const v=(typeof getSet==="function"?getSet("copilote-sens","normale"):"normale"); return v==="faible"?0.75:v==="elevee"?1.25:1; }
 // pente (m/s) par moindres carrés : plus stable qu'une simple différence entre deux images
-function slope(h){ const n=h.length; if(n<4) return 0; const t0=h[0].t; let sx=0,sy=0,sxx=0,sxy=0;
+function slope(h){ const n=h.length; if(n<3) return 0; const t0=h[0].t; let sx=0,sy=0,sxx=0,sxy=0;
   for(const p of h){ const x=(p.t-t0)/1000; sx+=x; sy+=p.d; sxx+=x*x; sxy+=x*p.d; }
   const den=n*sxx-sx*sx; return den>1e-6?(n*sxy-sx*sy)/den:0; }
 function assess(dets,W,H,t){
@@ -517,10 +517,10 @@ function assess(dets,W,H,t){
     best.dist=best.seen===undefined?rawDist:best.dist*0.55+rawDist*0.45;
     const dist=best.dist;
     best.seen=true; best.cx=cx; best.t=t;
-    best.hist.push({t,d:dist}); while(best.hist.length&&t-best.hist[0].t>1500) best.hist.shift();
+    best.hist.push({t,d:dist}); while(best.hist.length>3&&t-best.hist[0].t>2000) best.hist.shift();
     const span=best.hist.length?(t-best.hist[0].t)/1000:0;
-    // vitesse d'approche : seulement si on a assez d'images sur au moins 0,6 s
-    const closing=span>=0.6?Math.max(-15,Math.min(40,-slope(best.hist))):0;
+    // vitesse d'approche : au moins 3 images sur 0,5 s ou plus (marche aussi sur les téléphones lents)
+    const closing=span>=0.5&&best.hist.length>=3?Math.max(-15,Math.min(40,-slope(best.hist))):0;
     best.closing=closing;
     const ttc=closing>0.3?dist/closing:Infinity;
     const xl=(x-W/2)*dist/f, xr=(x+w-W/2)*dist/f;
@@ -534,8 +534,8 @@ function assess(dets,W,H,t){
         if((closing>1.0&&ttc<2.0*k)||dist<Math.max(3,v*0.6*k)) raw="danger";
         else if((closing>0.8&&ttc<3.0*k)||dist<Math.max(5,v*1.0*k)) raw="warn";
       }else{ // pas de vitesse GPS : uniquement la vitesse d'approche
-        if((closing>1.2&&ttc<1.8*k)||(dist<2&&closing>0.5)) raw="danger";
-        else if(closing>1.0&&ttc<2.8*k) raw="warn";
+        if((closing>1.0&&ttc<2.2*k)||(dist<2.5&&closing>0.5)) raw="danger";
+        else if(closing>0.7&&ttc<3.5*k) raw="warn";
       }
     }
     // confirmation : le danger doit durer au moins 0,4 s et 2 images
@@ -543,11 +543,12 @@ function assess(dets,W,H,t){
     if(raw==="safe"){ best.lvlSince=0; best.frames=0; best.cand="safe"; }
     else { if(best.cand!==raw&&rk[raw]>rk[best.cand||"safe"]){ /* escalade : on garde le compteur */ }
       if(!best.lvlSince) best.lvlSince=t; best.frames++; best.cand=raw; }
-    const confirmed=raw!=="safe"&&best.frames>=2&&t-best.lvlSince>=400;
+    // confirmé après 2 images, ou tout de suite si la collision est imminente (< 1,2 s)
+    const confirmed=raw!=="safe"&&(best.frames>=2||(raw==="danger"&&ttc<1.2));
     const lvl=confirmed?raw:"safe";
     out.push({...d,lvl,ttc,dist,inLane,closing,ahead:inLane});
   }
-  for(let i=tracks.length-1;i>=0;i--) if(t-tracks[i].t>1500) tracks.splice(i,1);
+  for(let i=tracks.length-1;i>=0;i--) if(t-tracks[i].t>2500) tracks.splice(i,1);
   return out;
 }
 // Niveau affiché : on garde une alerte 0,8 s après sa fin pour éviter le clignotement
