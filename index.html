@@ -42,6 +42,10 @@ ol{margin:0;padding-left:1.2em;display:flex;flex-direction:column;gap:6px;color:
 .chip.trial{border-color:var(--warn);color:var(--warn)}
 .chip.active{border-color:var(--safe);color:var(--safe)}
 .chip.expired{border-color:var(--danger);color:var(--danger)}
+.check{display:flex;gap:10px;align-items:flex-start;font-size:.92rem;line-height:1.4}
+.check input{width:22px;height:22px;flex:none;margin-top:1px}
+.check a{color:var(--accent)}
+a.link{text-align:center}
 .link{font:inherit;background:none;border:0;color:var(--muted);text-decoration:underline;cursor:pointer;padding:8px;align-self:center}
 .numbers{display:flex;flex-direction:column;gap:6px;margin:8px 0}
 .numbers div{display:flex;justify-content:space-between;align-items:center;gap:10px;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
@@ -103,6 +107,7 @@ ol{margin:0;padding-left:1.2em;display:flex;flex-direction:column;gap:6px;color:
     <label class="field">Numéro de téléphone<input id="fPhone" type="tel" inputmode="tel" autocomplete="tel" placeholder="77 123 45 67" required></label>
     <label class="field">Code secret (6 chiffres)<input id="fPin" type="password" inputmode="numeric" maxlength="6" autocomplete="current-password" placeholder="••••••" required></label>
     <p class="hint" id="pinHint">Choisissez 6 chiffres faciles à retenir pour vous. Ne les donnez à personne.</p>
+    <label class="check" id="cguRow" for="fCgu"><input type="checkbox" id="fCgu"><span>J'ai lu et j'accepte les <a href="conditions.html" target="_blank" rel="noopener">conditions d'utilisation et la politique de données personnelles</a>. Je sais que Copilote Route m'aide mais ne remplace pas ma vigilance au volant.</span></label>
     <button class="btn" id="authBtn" type="submit">Créer mon compte</button>
     <p class="error" id="authErr" role="alert"></p>
   </form>
@@ -132,6 +137,7 @@ ol{margin:0;padding-left:1.2em;display:flex;flex-direction:column;gap:6px;color:
     </form>
   </section>
   <button class="btn ghost" id="payBack">Retour</button>
+  <a class="link" href="conditions.html" target="_blank" rel="noopener">Conditions d'utilisation et données personnelles</a>
   <button class="link" id="logout2">Se déconnecter</button>
 </main>
 
@@ -193,6 +199,7 @@ ol{margin:0;padding-left:1.2em;display:flex;flex-direction:column;gap:6px;color:
 
   <button class="btn ghost" id="pickBtn">Tester avec une vidéo enregistrée</button>
   <input type="file" id="pick" accept="video/*" hidden>
+  <a class="link" href="conditions.html" target="_blank" rel="noopener">Conditions d'utilisation et données personnelles</a>
   <button class="link" id="logout">Se déconnecter</button>
 </main>
 
@@ -400,6 +407,7 @@ document.getElementById("authTabs").onclick=e=>{
   [...document.getElementById("authTabs").children].forEach(x=>x.setAttribute("aria-pressed",x===b));
   document.getElementById("nameRow").hidden=authMode!=="signup";
   document.getElementById("pinHint").hidden=authMode!=="signup";
+  document.getElementById("cguRow").hidden=authMode!=="signup";
   document.getElementById("authBtn").textContent=authMode==="signup"?"Créer mon compte":"Me connecter";
   document.getElementById("authErr").textContent="";
 };
@@ -408,6 +416,7 @@ document.getElementById("authForm").onsubmit=async e=>{
   err.textContent=""; btn.disabled=true; const old=btn.textContent; btn.textContent="Patientez…";
   try{
     const ph=document.getElementById("fPhone").value, pin=document.getElementById("fPin").value.trim();
+    if(authMode==="signup"&&!document.getElementById("fCgu").checked) throw new Error("Cochez la case pour accepter les conditions d'utilisation.");
     if(authMode==="signup") await A.signUp(ph,pin,document.getElementById("fName").value); else await A.signIn(ph,pin);
     await boot();
   }catch(x){ err.textContent=x.message; }
