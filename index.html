@@ -501,51 +501,55 @@ function sensK(){ const v=(typeof getSet==="function"?getSet("copilote-sens","no
 function slope(h){ const n=h.length; if(n<3) return 0; const t0=h[0].t; let sx=0,sy=0,sxx=0,sxy=0;
   for(const p of h){ const x=(p.t-t0)/1000; sx+=x; sy+=p.d; sxx+=x*x; sxy+=x*p.d; }
   const den=n*sxx-sx*sx; return den>1e-6?(n*sxy-sx*sy)/den:0; }
+// Zones de distance (mètres), selon la sensibilité choisie
+function zones(){ const v=(typeof getSet==="function"?getSet("copilote-sens","normale"):"normale");
+  const f=v==="faible"?0.7:v==="elevee"?1.5:1; return {info:50, warn:20*f, brake:10*f, brake2:5*f}; }
+let ALERT_EVENTS=[];
 function assess(dets,W,H,t){
-  const f=focal(W,H), C=corridorHalf(), k=sensK(), out=[];
+  const f=focal(W,H), C=corridorHalf(), k=sensK(), Z=zones(), out=[];
   const kmh=typeof curKmh==="function"?curKmh():null, v=kmh==null?null:kmh/3.6;
+  const stopped=v!=null&&v<1.4, moving=v!=null&&v>=1.4;
+  ALERT_EVENTS=[];
   for(const tr of tracks) tr.seen=false;
   for(const d of dets){
     const [x,y,w,h]=d.bbox, cx=x+w/2;
     const rawDist=estimateDist(d,W,H,f);
-    // suivi de l'objet d'une image à l'autre
+    // suivi de l'objet d'une image à l'autre (il « se souvient » de chaque objet)
     let best=null,bd=1e9;
     for(const tr of tracks){ if(tr.seen||tr.cls!==d.class) continue;
       const dd=Math.abs(tr.cx-cx)/W+Math.abs(Math.log(tr.dist/rawDist)); if(dd<bd&&dd<0.6){bd=dd;best=tr;} }
-    if(!best){ best={cls:d.class,hist:[],dist:rawDist,closing:0,since:0,frames:0,lvlSince:0}; tracks.push(best); }
-    // distance lissée : on enlève le tremblement des cadres
+    if(!best){ best={cls:d.class,hist:[],dist:rawDist,closing:0,zf:{}}; tracks.push(best); }
     best.dist=best.seen===undefined?rawDist:best.dist*0.55+rawDist*0.45;
     const dist=best.dist;
     best.seen=true; best.cx=cx; best.t=t;
     best.hist.push({t,d:dist}); while(best.hist.length>3&&t-best.hist[0].t>2000) best.hist.shift();
     const span=best.hist.length?(t-best.hist[0].t)/1000:0;
-    // vitesse d'approche : au moins 3 images sur 0,5 s ou plus (marche aussi sur les téléphones lents)
     const closing=span>=0.5&&best.hist.length>=3?Math.max(-15,Math.min(40,-slope(best.hist))):0;
     best.closing=closing;
     const ttc=closing>0.3?dist/closing:Infinity;
     const xl=(x-W/2)*dist/f, xr=(x+w-W/2)*dist/f;
     const inLane=xl<C&&xr>-C;
-    const sure=(d.score||0)>=0.5&&dist<45;
-    let raw="safe";
-    if(inLane&&sure){
-      const moving=v!=null&&v>=1.4, stopped=v!=null&&v<1.4;
-      if(stopped){ if(dist<2&&closing>1) raw="danger"; }
-      else if(moving){
-        if((closing>1.0&&ttc<2.0*k)||dist<Math.max(3,v*0.6*k)) raw="danger";
-        else if((closing>0.8&&ttc<3.0*k)||dist<Math.max(5,v*1.0*k)) raw="warn";
-      }else{ // pas de vitesse GPS : uniquement la vitesse d'approche
-        if((closing>1.0&&ttc<2.2*k)||(dist<2.5&&closing>0.5)) raw="danger";
-        else if(closing>0.7&&ttc<3.5*k) raw="warn";
-      }
-    }
-    // confirmation : le danger doit durer au moins 0,4 s et 2 images
-    const rk={safe:0,warn:1,danger:2};
-    if(raw==="safe"){ best.lvlSince=0; best.frames=0; best.cand="safe"; }
-    else { if(best.cand!==raw&&rk[raw]>rk[best.cand||"safe"]){ /* escalade : on garde le compteur */ }
-      if(!best.lvlSince) best.lvlSince=t; best.frames++; best.cand=raw; }
-    // confirmé après 2 images, ou tout de suite si la collision est imminente (< 1,2 s)
-    const confirmed=raw!=="safe"&&(best.frames>=2||(raw==="danger"&&ttc<1.2));
-    const lvl=confirmed?raw:"safe";
+    const sure=(d.score||0)>=0.5;
+    // Concerné : sur ma trajectoire, détection sûre, je ne suis pas à l'arrêt, et l'objet ne s'éloigne pas
+    const concerned=inLane&&sure&&!stopped&&closing>-0.8;
+    // chaque zone doit être confirmée sur 2 images avant d'annoncer
+    const zf=best.zf; const hit=(key,cond)=>{ zf[key]=cond?(zf[key]||0)+1:0; return zf[key]>=2; };
+    const inInfo=hit("info",concerned&&dist<=Z.info), inWarn=hit("warn",concerned&&dist<=Z.warn),
+          inBrake=hit("brake",concerned&&dist<=Z.brake), inBrake2=hit("brake2",concerned&&dist<=Z.brake2);
+    // collision imminente en roulant (même avant 10 m, à grande vitesse)
+    const ttcDanger=concerned&&moving&&closing>1.0&&ttc<2.0*k;
+    let lvl="safe";
+    if(inBrake||ttcDanger) lvl="danger"; else if(inWarn) lvl="warn";
+    // annonces : une seule fois par objet et par zone (il mémorise ce qu'il a déjà dit)
+    best.said=best.said||{};
+    const say1=(key,type)=>{ if(!best.said[key]){ best.said[key]=true; ALERT_EVENTS.push({type,item:{...d,dist}}); } };
+    if(inBrake2){ say1("brake2","brake2"); best.said.brake=true; best.said.info=true; }
+    else if(inBrake||ttcDanger){ say1("brake","brake"); best.said.info=true; }
+    else if(inInfo) say1("info","info");
+    // l'objet repart plus loin : il pourra être annoncé de nouveau
+    if(dist>Z.brake2*1.6) best.said.brake2=false;
+    if(dist>Z.brake*1.4&&!ttcDanger) best.said.brake=false;
+    if(dist>Z.info*1.2||!inLane) best.said.info=best.said.info&&inLane&&dist<=Z.info*1.2;
     out.push({...d,lvl,ttc,dist,inLane,closing,ahead:inLane});
   }
   for(let i=tracks.length-1;i>=0;i--) if(t-tracks[i].t>2500) tracks.splice(i,1);
@@ -566,25 +570,30 @@ function beep(freq){ if(muted||!audio) return; try{const o=audio.createOscillato
 function speak(txt){
   if(VOICE.lang==="wo"&&!muted&&$("voice").checked){ const k=/Freinez/i.test(txt)?"freinez":/Attention/i.test(txt)?"attention":/activé/i.test(txt)?"active":null; if(k&&VOICE.clips[k]){ say(k); return; } }
   if(muted||!$("voice").checked||!window.speechSynthesis) return; try{speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(txt);u.lang="fr-FR";u.rate=1.15;u.volume=1;speechSynthesis.speak(u);}catch(e){} }
-let calmSince=0, episodeLevel="safe";
+let lastInfoSpeak=0;
+function mots(m){ m=Math.round(m); return m<=1?"1 mètre":m+" mètres"; }
 function alertLevel(level,items){
   const now=performance.now();
   $("drive").dataset.level=level;
   const msg={safe:"Route dégagée",warn:"Attention devant",danger:"FREINEZ !"};
   $("msg").textContent=msg[level];
-  if(level==="safe"){ if(lastLevel!=="safe") calmSince=now; if(now-calmSince>3000) episodeLevel="safe"; lastLevel=level; return; }
-  const rank={safe:0,warn:1,danger:2};
-  const isNew=rank[level]>rank[episodeLevel]; // nouvel épisode ou aggravation
-  if(level==="danger"){
-    if(now-lastBeep>1000){beep(1200);lastBeep=now;}
-    try{navigator.vibrate&&navigator.vibrate(150);}catch(e){}
-    if(isNew){ const dz=items.find(i=>i.lvl==="danger"); logAlert("danger",dz); try{ DashRec.markDanger(dz?dz.class:""); }catch(e){}
-      speak("Freinez ! "+(dz?NAMES[dz.class]:"obstacle")+" devant"); lastSpeak=now; }
-  }else if(level==="warn"&&isNew){
-    const it=items.find(i=>i.lvl==="warn"); logAlert("warn",it);
-    beep(700); speak("Attention, "+(it?NAMES[it.class].toLowerCase():"obstacle")); lastSpeak=now;
+  // 1) les annonces vocales viennent des zones franchies (une fois par objet et par zone)
+  const ev=ALERT_EVENTS.slice().sort((a,b)=>({brake2:0,brake:1,info:2}[a.type])-({brake2:0,brake:1,info:2}[b.type]))[0];
+  if(ev){
+    const name=NAMES[ev.item.class]||"Obstacle";
+    if(ev.type==="brake2"||ev.type==="brake"){
+      beep(1200); lastBeep=now; try{navigator.vibrate&&navigator.vibrate([200,80,200]);}catch(e){}
+      speak("Freinez ! "+name+" à "+mots(ev.item.dist)); lastSpeak=now;
+      logAlert("danger",ev.item); try{ DashRec.markDanger(ev.item.class); }catch(e){}
+    }else if(ev.type==="info"&&now-lastInfoSpeak>6000&&now-lastSpeak>3000){
+      const fem=ev.item.class==="car"||ev.item.class==="motorcycle";
+      speak(name+(fem?" détectée":" détecté")+" devant, "+mots(ev.item.dist)); lastSpeak=now; lastInfoSpeak=now;
+    }
   }
-  if(isNew) episodeLevel=level;
+  // 2) bip discret toutes les 1,5 s tant que le danger reste très proche
+  // (seulement si l'objet continue de se rapprocher : pas de bips sans fin dans un bouchon)
+  if(level==="danger"&&now-lastBeep>1500&&items.some(i=>i.lvl==="danger"&&i.closing>0.5)){ beep(1100); lastBeep=now; }
+  if(level==="warn"&&lastLevel==="safe") logAlert("warn",items.find(i=>i.lvl==="warn"));
   lastLevel=level;
 }
 
@@ -638,7 +647,7 @@ async function enterDrive(live){
   startTrip(!!live);
   try{audio=audio||new (window.AudioContext||window.webkitAudioContext)();audio.resume();}catch(e){}
   try{speechSynthesis&&speechSynthesis.speak(new SpeechSynthesisUtterance(""));}catch(e){}
-  $("home").hidden=true; $("drive").hidden=false; tracks.length=0; lastLevel="safe"; shownLevel="safe"; levelHoldUntil=0; episodeLevel="safe"; calmSince=0;
+  $("home").hidden=true; $("drive").hidden=false; tracks.length=0; lastLevel="safe"; shownLevel="safe"; levelHoldUntil=0; lastInfoSpeak=0;
   try{await document.documentElement.requestFullscreen();}catch(e){}
   try{wake=await navigator.wakeLock.request("screen");}catch(e){}
   if(!model){$("msg").textContent="Chargement de la détection…";}
@@ -680,7 +689,7 @@ let lastSpeedWarn=0, overSince=0;
 function curKmh(){ return curPos&&curPos.speed!=null&&!isNaN(curPos.speed)&&curPos.acc<=60?Math.round(curPos.speed*3.6):null; }
 function getSet(k,d){ try{ const v=localStorage.getItem(k); return v==null?d:v; }catch(e){ return d; } }
 function setSet(k,v){ try{ localStorage.setItem(k,v); }catch(e){} }
-const SENS_HELP={faible:"Moins d'alertes : seulement quand le danger est très proche. Conseillé en ville très chargée.",normale:"Équilibre conseillé.",elevee:"Alertes plus tôt : conseillé sur la route et la nuit."};
+const SENS_HELP={faible:"« Freinez » à 7 m et 3,5 m. Conseillé dans les embouteillages.",normale:"Annonce de l'objet à 50 m, « Freinez » à 10 m puis à 5 m.",elevee:"« Freinez » à 15 m et 7,5 m. Conseillé sur la route et la nuit."};
 function renderSens(){ const v=getSet("copilote-sens","normale"); [...$("sens").children].forEach(b=>b.setAttribute("aria-pressed",b.dataset.s===v)); $("sensHelp").textContent=SENS_HELP[v]; }
 $("sens").onclick=e=>{ const b=e.target.closest("button"); if(!b) return; setSet("copilote-sens",b.dataset.s); renderSens(); };
 renderSens();
