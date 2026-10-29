@@ -158,6 +158,14 @@ a.link{text-align:center}
       <button aria-pressed="false" data-v="moto">Une moto</button>
     </div>
     <label class="switch" for="voice">Alertes vocales<input type="checkbox" id="voice" checked></label>
+    <div class="field">Sensibilité des alertes
+      <div class="seg3" id="sens">
+        <button type="button" data-s="faible">Faible</button>
+        <button type="button" data-s="normale">Normale</button>
+        <button type="button" data-s="elevee">Élevée</button>
+      </div>
+      <span class="hint" id="sensHelp"></span>
+    </div>
     <label class="field" for="speedMax">Alerte d'excès de vitesse
       <select id="speedMax"><option value="0">Désactivée</option><option value="30">Au-dessus de 30 km/h</option><option value="50">Au-dessus de 50 km/h (ville)</option><option value="70">Au-dessus de 70 km/h</option><option value="90">Au-dessus de 90 km/h (route)</option><option value="110">Au-dessus de 110 km/h (autoroute)</option></select>
     </label>
@@ -486,45 +494,57 @@ function estimateDist(d,W,H,f){
   return Math.max(0.5,dist);
 }
 const tracks=[];
+// Sensibilité choisie par le conducteur : agit sur les seuils de temps
+function sensK(){ const v=(typeof getSet==="function"?getSet("copilote-sens","normale"):"normale"); return v==="faible"?0.75:v==="elevee"?1.25:1; }
+// pente (m/s) par moindres carrés : plus stable qu'une simple différence entre deux images
+function slope(h){ const n=h.length; if(n<4) return 0; const t0=h[0].t; let sx=0,sy=0,sxx=0,sxy=0;
+  for(const p of h){ const x=(p.t-t0)/1000; sx+=x; sy+=p.d; sxx+=x*x; sxy+=x*p.d; }
+  const den=n*sxx-sx*sx; return den>1e-6?(n*sxy-sx*sy)/den:0; }
 function assess(dets,W,H,t){
-  const f=focal(W,H), C=corridorHalf(), out=[];
+  const f=focal(W,H), C=corridorHalf(), k=sensK(), out=[];
   const kmh=typeof curKmh==="function"?curKmh():null, v=kmh==null?null:kmh/3.6;
   for(const tr of tracks) tr.seen=false;
   for(const d of dets){
     const [x,y,w,h]=d.bbox, cx=x+w/2;
-    const dist=estimateDist(d,W,H,f);
-    const xl=(x-W/2)*dist/f, xr=(x+w-W/2)*dist/f;          // bords gauche/droit en mètres
-    const inLane=xl<C&&xr>-C;
-    const lateral=inLane?0:Math.min(Math.abs(xl),Math.abs(xr))-C;
+    const rawDist=estimateDist(d,W,H,f);
     // suivi de l'objet d'une image à l'autre
     let best=null,bd=1e9;
     for(const tr of tracks){ if(tr.seen||tr.cls!==d.class) continue;
-      const dd=Math.abs(tr.cx-cx)/W+Math.abs(Math.log(tr.dist/dist)); if(dd<bd&&dd<0.6){bd=dd;best=tr;} }
-    if(!best){ best={cls:d.class,hist:[],closing:0,streakD:0,streakW:0}; tracks.push(best); }
-    best.seen=true; best.cx=cx; best.dist=dist; best.t=t;
-    best.hist.push({t,dist}); while(best.hist.length&&t-best.hist[0].t>1200) best.hist.shift();
-    // vitesse d'approche (m/s) sur la dernière seconde, lissée
-    if(best.hist.length>=3){ const a=best.hist[0], b=best.hist[best.hist.length-1], dt=(b.t-a.t)/1000;
-      if(dt>0.25){ const raw=(a.dist-b.dist)/dt; best.closing=best.closing*0.5+Math.max(-15,Math.min(40,raw))*0.5; } }
-    const closing=best.closing, ttc=closing>0.3?dist/closing:Infinity;
+      const dd=Math.abs(tr.cx-cx)/W+Math.abs(Math.log(tr.dist/rawDist)); if(dd<bd&&dd<0.6){bd=dd;best=tr;} }
+    if(!best){ best={cls:d.class,hist:[],dist:rawDist,closing:0,since:0,frames:0,lvlSince:0}; tracks.push(best); }
+    // distance lissée : on enlève le tremblement des cadres
+    best.dist=best.seen===undefined?rawDist:best.dist*0.55+rawDist*0.45;
+    const dist=best.dist;
+    best.seen=true; best.cx=cx; best.t=t;
+    best.hist.push({t,d:dist}); while(best.hist.length&&t-best.hist[0].t>1500) best.hist.shift();
+    const span=best.hist.length?(t-best.hist[0].t)/1000:0;
+    // vitesse d'approche : seulement si on a assez d'images sur au moins 0,6 s
+    const closing=span>=0.6?Math.max(-15,Math.min(40,-slope(best.hist))):0;
+    best.closing=closing;
+    const ttc=closing>0.3?dist/closing:Infinity;
+    const xl=(x-W/2)*dist/f, xr=(x+w-W/2)*dist/f;
+    const inLane=xl<C&&xr>-C;
+    const sure=(d.score||0)>=0.5&&dist<45;
     let raw="safe";
-    if(inLane){
-      const stopped=v!=null&&v<1.4;
-      if(stopped){ if(dist<2.5&&closing>1) raw="danger"; }
-      else if(v!=null&&v>=1.4){
-        // règle du « temps de suivi » : moins de 0,7 s derrière = danger, moins de 1,2 s = attention
-        if((closing>0.8&&ttc<2.0)||dist<Math.max(3.5,v*0.7)) raw="danger";
-        else if((closing>0.5&&ttc<3.5)||dist<Math.max(6,v*1.2)) raw="warn";
-      }else{ // pas de vitesse GPS : on se fie à la vitesse d'approche
-        if((closing>0.8&&ttc<2.0)||(dist<3&&closing>0.3)) raw="danger";
-        else if((closing>0.5&&ttc<3.5)||(dist<6&&closing>0.3)) raw="warn";
+    if(inLane&&sure){
+      const moving=v!=null&&v>=1.4, stopped=v!=null&&v<1.4;
+      if(stopped){ if(dist<2&&closing>1) raw="danger"; }
+      else if(moving){
+        if((closing>1.0&&ttc<2.0*k)||dist<Math.max(3,v*0.6*k)) raw="danger";
+        else if((closing>0.8&&ttc<3.0*k)||dist<Math.max(5,v*1.0*k)) raw="warn";
+      }else{ // pas de vitesse GPS : uniquement la vitesse d'approche
+        if((closing>1.2&&ttc<1.8*k)||(dist<2&&closing>0.5)) raw="danger";
+        else if(closing>1.0&&ttc<2.8*k) raw="warn";
       }
     }
-    // confirmation sur plusieurs images (évite les alertes sans arrêt)
-    best.streakD=raw==="danger"?best.streakD+1:0;
-    best.streakW=raw!=="safe"?best.streakW+1:0;
-    const lvl=best.streakD>=2?"danger":best.streakW>=3?"warn":"safe";
-    out.push({...d,lvl,ttc,dist,inLane,lateral,ahead:inLane});
+    // confirmation : le danger doit durer au moins 0,4 s et 2 images
+    const rk={safe:0,warn:1,danger:2};
+    if(raw==="safe"){ best.lvlSince=0; best.frames=0; best.cand="safe"; }
+    else { if(best.cand!==raw&&rk[raw]>rk[best.cand||"safe"]){ /* escalade : on garde le compteur */ }
+      if(!best.lvlSince) best.lvlSince=t; best.frames++; best.cand=raw; }
+    const confirmed=raw!=="safe"&&best.frames>=2&&t-best.lvlSince>=400;
+    const lvl=confirmed?raw:"safe";
+    out.push({...d,lvl,ttc,dist,inLane,closing,ahead:inLane});
   }
   for(let i=tracks.length-1;i>=0;i--) if(t-tracks[i].t>1500) tracks.splice(i,1);
   return out;
@@ -544,20 +564,25 @@ function beep(freq){ if(muted||!audio) return; try{const o=audio.createOscillato
 function speak(txt){
   if(VOICE.lang==="wo"&&!muted&&$("voice").checked){ const k=/Freinez/i.test(txt)?"freinez":/Attention/i.test(txt)?"attention":/activé/i.test(txt)?"active":null; if(k&&VOICE.clips[k]){ say(k); return; } }
   if(muted||!$("voice").checked||!window.speechSynthesis) return; try{speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(txt);u.lang="fr-FR";u.rate=1.15;u.volume=1;speechSynthesis.speak(u);}catch(e){} }
+let calmSince=0, episodeLevel="safe";
 function alertLevel(level,items){
   const now=performance.now();
   $("drive").dataset.level=level;
   const msg={safe:"Route dégagée",warn:"Attention devant",danger:"FREINEZ !"};
   $("msg").textContent=msg[level];
+  if(level==="safe"){ if(lastLevel!=="safe") calmSince=now; if(now-calmSince>3000) episodeLevel="safe"; lastLevel=level; return; }
+  const rank={safe:0,warn:1,danger:2};
+  const isNew=rank[level]>rank[episodeLevel]; // nouvel épisode ou aggravation
   if(level==="danger"){
-    if(now-lastBeep>450){beep(1200);lastBeep=now;}
+    if(now-lastBeep>1000){beep(1200);lastBeep=now;}
     try{navigator.vibrate&&navigator.vibrate(150);}catch(e){}
-    if(lastLevel!=="danger"){ const dz=items.find(i=>i.lvl==="danger"); logAlert("danger",dz); try{ DashRec.markDanger(dz?dz.class:""); }catch(e){} }
-    if(lastLevel!=="danger"&&now-lastSpeak>2500){const it=items.find(i=>i.lvl==="danger");speak("Freinez ! "+(it?NAMES[it.class]:"obstacle")+" devant");lastSpeak=now;}
-  }else if(level==="warn"&&lastLevel==="safe"&&now-lastSpeak>4000){
-    logAlert("warn",items.find(i=>i.lvl==="warn"));
-    beep(700); const it=items.find(i=>i.lvl==="warn"); speak("Attention, "+(it?NAMES[it.class].toLowerCase():"obstacle")); lastSpeak=now;
+    if(isNew){ const dz=items.find(i=>i.lvl==="danger"); logAlert("danger",dz); try{ DashRec.markDanger(dz?dz.class:""); }catch(e){}
+      speak("Freinez ! "+(dz?NAMES[dz.class]:"obstacle")+" devant"); lastSpeak=now; }
+  }else if(level==="warn"&&isNew){
+    const it=items.find(i=>i.lvl==="warn"); logAlert("warn",it);
+    beep(700); speak("Attention, "+(it?NAMES[it.class].toLowerCase():"obstacle")); lastSpeak=now;
   }
+  if(isNew) episodeLevel=level;
   lastLevel=level;
 }
 
@@ -608,7 +633,7 @@ async function enterDrive(live){
   startTrip(!!live);
   try{audio=audio||new (window.AudioContext||window.webkitAudioContext)();audio.resume();}catch(e){}
   try{speechSynthesis&&speechSynthesis.speak(new SpeechSynthesisUtterance(""));}catch(e){}
-  $("home").hidden=true; $("drive").hidden=false; tracks.length=0; lastLevel="safe"; shownLevel="safe"; levelHoldUntil=0;
+  $("home").hidden=true; $("drive").hidden=false; tracks.length=0; lastLevel="safe"; shownLevel="safe"; levelHoldUntil=0; episodeLevel="safe"; calmSince=0;
   try{await document.documentElement.requestFullscreen();}catch(e){}
   try{wake=await navigator.wakeLock.request("screen");}catch(e){}
   if(!model){$("msg").textContent="Chargement de la détection…";}
@@ -650,6 +675,10 @@ let lastSpeedWarn=0, overSince=0;
 function curKmh(){ return curPos&&curPos.speed!=null&&!isNaN(curPos.speed)&&curPos.acc<=60?Math.round(curPos.speed*3.6):null; }
 function getSet(k,d){ try{ const v=localStorage.getItem(k); return v==null?d:v; }catch(e){ return d; } }
 function setSet(k,v){ try{ localStorage.setItem(k,v); }catch(e){} }
+const SENS_HELP={faible:"Moins d'alertes : seulement quand le danger est très proche. Conseillé en ville très chargée.",normale:"Équilibre conseillé.",elevee:"Alertes plus tôt : conseillé sur la route et la nuit."};
+function renderSens(){ const v=getSet("copilote-sens","normale"); [...$("sens").children].forEach(b=>b.setAttribute("aria-pressed",b.dataset.s===v)); $("sensHelp").textContent=SENS_HELP[v]; }
+$("sens").onclick=e=>{ const b=e.target.closest("button"); if(!b) return; setSet("copilote-sens",b.dataset.s); renderSens(); };
+renderSens();
 $("speedMax").value=getSet("copilote-speed","0"); $("speedMax").onchange=()=>setSet("copilote-speed",$("speedMax").value);
 $("autoStart").checked=getSet("copilote-auto","0")==="1"; $("autoStart").onchange=()=>setSet("copilote-auto",$("autoStart").checked?"1":"0");
 function checkSpeed(){
