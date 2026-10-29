@@ -78,11 +78,11 @@
       if (!srcVideo || !HTMLCanvasElement.prototype.captureStream) return camStream;
       const tr = camStream.getVideoTracks()[0], st = tr && tr.getSettings ? tr.getSettings() : {};
       const w = st.width || srcVideo.videoWidth || 1280, h = st.height || srcVideo.videoHeight || 720;
-      const scale = Math.min(1, 960 / Math.max(w, h));
+      const scale = Math.min(1, 720 / Math.max(w, h));
       canvas = document.createElement("canvas"); canvas.width = Math.round(w * scale); canvas.height = Math.round(h * scale);
       cctx = canvas.getContext("2d"); drawFrame();
-      drawTimer = setInterval(drawFrame, 1000 / 15);
-      return canvas.captureStream(15);
+      drawTimer = setInterval(drawFrame, 1000 / 10);
+      return canvas.captureStream(10);
     } catch (e) { return camStream; }
   }
   const SEG_MS = () => (settings.mode === "trajet" ? 60000 : 12000);
