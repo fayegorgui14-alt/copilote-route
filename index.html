@@ -463,29 +463,80 @@ if("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch
 
 $("vehicle").onclick=e=>{const b=e.target.closest("button"); if(!b) return; vehicle=b.dataset.v; [...$("vehicle").children].forEach(x=>x.setAttribute("aria-pressed",x===b));};
 
-/* ----- Évaluation du danger ----- */
+/* ----- Évaluation du danger -----
+   1. Distance en mètres : on connaît la taille réelle moyenne de chaque type d'objet
+      (une voiture fait ~1,8 m de large, un piéton ~1,7 m de haut) et l'angle de vue de la caméra.
+   2. Couloir de collision : on calcule la position latérale de l'objet en mètres ;
+      il n'est dangereux que s'il est dans le couloir où va passer le véhicule.
+   3. Vitesse d'approche : comment la distance diminue d'une image à l'autre → temps avant collision.
+   4. Confirmation : l'alerte n'est donnée que si le danger est vu sur plusieurs images de suite. */
+const SIZES={car:{w:1.8,h:1.5},truck:{w:2.5,h:3.2},bus:{w:2.5,h:3.0},motorcycle:{w:0.8,h:1.5},bicycle:{w:0.6,h:1.7},person:{w:0.5,h:1.7}};
+const HFOV=63*Math.PI/180; // angle de vue horizontal moyen d'une caméra de téléphone (côté le plus long)
+function focal(W,H){ return (Math.max(W,H)/2)/Math.tan(HFOV/2); }
+function corridorHalf(){ return vehicle==="moto"?0.8:1.3; } // demi-largeur du couloir (m) : véhicule + marge
+function estimateDist(d,W,H,f){
+  const [x,y,w,h]=d.bbox, sz=SIZES[d.class]||{w:1.5,h:1.5}, m=3;
+  const cutX=x<=m||x+w>=W-m, cutY=y<=m||y+h>=H-m;
+  const dW=sz.w*f/Math.max(w,1), dH=sz.h*f/Math.max(h,1);
+  const side=(d.class==="car"||d.class==="truck"||d.class==="bus")&&w/h>1.7; // véhicule vu de côté
+  let dist;
+  if(d.class==="person"||d.class==="bicycle") dist=cutY?dW:dH;
+  else if(side) dist=cutY?dW:dH;
+  else dist=cutX?dH:dW;
+  return Math.max(0.5,dist);
+}
 const tracks=[];
 function assess(dets,W,H,t){
-  // Zone "devant moi" : plus étroite pour une moto
-  const zl=vehicle==="moto"?0.34:0.28, zr=1-zl;
-  const out=[];
+  const f=focal(W,H), C=corridorHalf(), out=[];
+  const kmh=typeof curKmh==="function"?curKmh():null, v=kmh==null?null:kmh/3.6;
+  for(const tr of tracks) tr.seen=false;
   for(const d of dets){
-    const [x,y,w,h]=d.bbox, cx=(x+w/2)/W, hr=h/H, wr=w/W;
+    const [x,y,w,h]=d.bbox, cx=x+w/2;
+    const dist=estimateDist(d,W,H,f);
+    const xl=(x-W/2)*dist/f, xr=(x+w-W/2)*dist/f;          // bords gauche/droit en mètres
+    const inLane=xl<C&&xr>-C;
+    const lateral=inLane?0:Math.min(Math.abs(xl),Math.abs(xr))-C;
+    // suivi de l'objet d'une image à l'autre
     let best=null,bd=1e9;
-    for(const tr of tracks){const dd=Math.abs(tr.cx-cx)+Math.abs(tr.hr-hr); if(tr.cls===d.class&&dd<bd&&dd<0.25){bd=dd;best=tr;}}
-    let g=0;
-    if(best){const dt=(t-best.t)/1000; const raw=dt>0?(hr-best.hr)/dt:0; best.g=best.g*0.6+raw*0.4; g=best.g; Object.assign(best,{cx,hr,t});}
-    else tracks.push({cls:d.class,cx,hr,t,g:0});
-    const ahead=cx>zl&&cx<zr;
-    const size=Math.max(hr,wr*0.8);
-    const ttc=g>0.005?hr/g:Infinity;
-    let lvl="safe";
-    if(ahead&&(size>0.55||ttc<1.6)) lvl="danger";
-    else if(ahead&&(size>0.35||ttc<3)) lvl="warn";
-    out.push({...d,lvl,ttc,ahead});
+    for(const tr of tracks){ if(tr.seen||tr.cls!==d.class) continue;
+      const dd=Math.abs(tr.cx-cx)/W+Math.abs(Math.log(tr.dist/dist)); if(dd<bd&&dd<0.6){bd=dd;best=tr;} }
+    if(!best){ best={cls:d.class,hist:[],closing:0,streakD:0,streakW:0}; tracks.push(best); }
+    best.seen=true; best.cx=cx; best.dist=dist; best.t=t;
+    best.hist.push({t,dist}); while(best.hist.length&&t-best.hist[0].t>1200) best.hist.shift();
+    // vitesse d'approche (m/s) sur la dernière seconde, lissée
+    if(best.hist.length>=3){ const a=best.hist[0], b=best.hist[best.hist.length-1], dt=(b.t-a.t)/1000;
+      if(dt>0.25){ const raw=(a.dist-b.dist)/dt; best.closing=best.closing*0.5+Math.max(-15,Math.min(40,raw))*0.5; } }
+    const closing=best.closing, ttc=closing>0.3?dist/closing:Infinity;
+    let raw="safe";
+    if(inLane){
+      const stopped=v!=null&&v<1.4;
+      if(stopped){ if(dist<2.5&&closing>1) raw="danger"; }
+      else if(v!=null&&v>=1.4){
+        // règle du « temps de suivi » : moins de 0,7 s derrière = danger, moins de 1,2 s = attention
+        if((closing>0.8&&ttc<2.0)||dist<Math.max(3.5,v*0.7)) raw="danger";
+        else if((closing>0.5&&ttc<3.5)||dist<Math.max(6,v*1.2)) raw="warn";
+      }else{ // pas de vitesse GPS : on se fie à la vitesse d'approche
+        if((closing>0.8&&ttc<2.0)||(dist<3&&closing>0.3)) raw="danger";
+        else if((closing>0.5&&ttc<3.5)||(dist<6&&closing>0.3)) raw="warn";
+      }
+    }
+    // confirmation sur plusieurs images (évite les alertes sans arrêt)
+    best.streakD=raw==="danger"?best.streakD+1:0;
+    best.streakW=raw!=="safe"?best.streakW+1:0;
+    const lvl=best.streakD>=2?"danger":best.streakW>=3?"warn":"safe";
+    out.push({...d,lvl,ttc,dist,inLane,lateral,ahead:inLane});
   }
   for(let i=tracks.length-1;i>=0;i--) if(t-tracks[i].t>1500) tracks.splice(i,1);
   return out;
+}
+// Niveau affiché : on garde une alerte 0,8 s après sa fin pour éviter le clignotement
+let shownLevel="safe", levelHoldUntil=0;
+function sceneLevel(items){
+  const now=performance.now(), raw=items.some(i=>i.lvl==="danger")?"danger":items.some(i=>i.lvl==="warn")?"warn":"safe";
+  const rank={safe:0,warn:1,danger:2};
+  if(rank[raw]>=rank[shownLevel]){ shownLevel=raw; if(raw!=="safe") levelHoldUntil=now+800; }
+  else if(now>levelHoldUntil){ shownLevel=raw; }
+  return shownLevel;
 }
 
 /* ----- Alertes ----- */
@@ -518,10 +569,17 @@ function draw(items,W,H){
   const s=Math.max(cv.width/W,cv.height/H), ox=(cv.width-W*s)/2, oy=(cv.height-H*s)/2;
   ctx.clearRect(0,0,cv.width,cv.height);
   ctx.font=`700 ${Math.round(15*dpr)}px system-ui,sans-serif`;
+  // couloir de collision (approximatif : caméra à ~1,2 m du sol, horizon au milieu de l'image)
+  { const f=focal(W,H), C=corridorHalf(), hc=vehicle==="moto"?1.1:1.2; ctx.save(); ctx.strokeStyle="rgba(255,255,255,.35)"; ctx.setLineDash([8*dpr,8*dpr]); ctx.lineWidth=2*dpr;
+    for(const sgn of [-1,1]){ ctx.beginPath(); let first=true;
+      for(const dd of [2,3,4,6,8,12,18,25,40]){ const px=W/2+sgn*C*f/dd, py=H/2+hc*f/dd; if(py>H*1.2) continue; const X=ox+px*s, Y=oy+py*s; if(first){ctx.moveTo(X,Y);first=false;} else ctx.lineTo(X,Y); }
+      ctx.stroke(); }
+    ctx.restore(); }
   for(const it of items){
     const [x,y,w,h]=it.bbox, X=ox+x*s, Y=oy+y*s, Wd=w*s, Ht=h*s;
     ctx.lineWidth=(it.lvl==="danger"?5:3)*dpr; ctx.strokeStyle=COLORS[it.lvl]; ctx.strokeRect(X,Y,Wd,Ht);
-    const label=NAMES[it.class]+(it.ahead&&isFinite(it.ttc)&&it.ttc<5?" · "+it.ttc.toFixed(1)+" s":"");
+    const dm=it.dist<10?it.dist.toFixed(1).replace(".",","):Math.round(it.dist);
+    const label=NAMES[it.class]+" · "+dm+" m"+(it.inLane&&isFinite(it.ttc)&&it.ttc<4?" · "+it.ttc.toFixed(1).replace(".",",")+" s":"");
     const tw=ctx.measureText(label).width+12*dpr, th=24*dpr;
     ctx.fillStyle=COLORS[it.lvl]; ctx.fillRect(X,Math.max(0,Y-th),tw,th);
     ctx.fillStyle="#000"; ctx.fillText(label,X+6*dpr,Math.max(th-7*dpr,Y-7*dpr));
@@ -538,7 +596,7 @@ async function loop(){
       const dets=preds.filter(p=>NAMES[p.class]);
       const items=assess(dets,W,H,performance.now());
       draw(items,W,H);
-      const lvl=items.some(i=>i.lvl==="danger")?"danger":items.some(i=>i.lvl==="warn")?"warn":"safe";
+      const lvl=sceneLevel(items);
       alertLevel(lvl,items);
       frames++; const now=performance.now(); if(now-fpsT>1000){$("fps").textContent=frames+" images/s";frames=0;fpsT=now;}
     }catch(e){}
@@ -550,7 +608,7 @@ async function enterDrive(live){
   startTrip(!!live);
   try{audio=audio||new (window.AudioContext||window.webkitAudioContext)();audio.resume();}catch(e){}
   try{speechSynthesis&&speechSynthesis.speak(new SpeechSynthesisUtterance(""));}catch(e){}
-  $("home").hidden=true; $("drive").hidden=false; tracks.length=0; lastLevel="safe";
+  $("home").hidden=true; $("drive").hidden=false; tracks.length=0; lastLevel="safe"; shownLevel="safe"; levelHoldUntil=0;
   try{await document.documentElement.requestFullscreen();}catch(e){}
   try{wake=await navigator.wakeLock.request("screen");}catch(e){}
   if(!model){$("msg").textContent="Chargement de la détection…";}
