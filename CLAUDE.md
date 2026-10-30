@@ -24,6 +24,9 @@ GPS incrusté sur les vidéos, alerte d'excès de vitesse, démarrage automatiqu
 - `admin.html` : back-office administrateur (Gorgui = rôle admin, numéro 221773944916)
 - `fleet.html` : espace entreprise (responsables de flotte)
 - `supabase.sql` : schéma complet + règles de sécurité + fonctions (idempotent, déjà exécuté)
+- `nav.js` : navigation (Leaflet dans `lib/leaflet/`, recherche Nominatim, itinéraire OSRM, guidage vocal FR).
+  Serveurs réglables dans config.js (NAV_TILES, NAV_GEOCODER, NAV_ROUTER). Par défaut : serveurs publics gratuits,
+  réservés aux essais → passer à un fournisseur (MapTiler, OpenRouteService, Geoapify…) avant de nombreux clients.
 - `sw.js` : fonctionnement hors ligne — incrémenter `CACHE` (copilote-vN) à chaque publication
 
 ## Modèle économique
