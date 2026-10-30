@@ -422,7 +422,7 @@ function startTrip(live){
   if(navigator.geolocation){ try{ geoWatch=navigator.geolocation.watchPosition(p=>{
       const c={lat:p.coords.latitude,lng:p.coords.longitude,acc:p.coords.accuracy,speed:p.coords.speed,t:p.timestamp};
       if((c.speed==null||isNaN(c.speed))&&curPos&&curPos.t&&c.acc<=60){ const dt=(c.t-curPos.t)/1000; if(dt>0.5&&dt<15) c.speed=hav(curPos,c)*1000/dt; }
-      curPos=c; checkSpeed(); try{ navOnPos(c); }catch(e){}
+      curPos=c; checkSpeed(); if(navWatch===null){ try{ navOnPos(c); }catch(e){} }
       if(c.acc>60) return;
       if(lastPos){ const d=hav(lastPos,c); if(d>0.01&&d<2) TRIP.km+=d; }
       lastPos=c;
@@ -762,7 +762,7 @@ $("start").onclick=async()=>{
 };
 $("pickBtn").onclick=async()=>{ if(await gate()) $("pick").click(); };
 $("pick").onchange=async e=>{const f=e.target.files[0]; if(!f) return; vid.srcObject=null; vid.src=URL.createObjectURL(f); vid.loop=true; await vid.play().catch(()=>{}); await enterDrive();};
-$("stopBtn").onclick=()=>{ $("prep").hidden=true; try{ Nav.stop(); }catch(e){} $("navBar").hidden=true; $("navMap").hidden=true;
+$("stopBtn").onclick=()=>{ $("prep").hidden=true; try{ Nav.stop(); }catch(e){} stopNavGps(); $("navBar").hidden=true; $("navMap").hidden=true;
   running=false; endTrip(); try{ DashRec.stop(); }catch(e){}
   // laisse le temps au dernier morceau de vidéo d'être enregistré avant de couper la caméra
   const st=stream; stream=null; if(st) setTimeout(()=>st.getTracks().forEach(t=>t.stop()),800);
@@ -826,9 +826,16 @@ function renderDestChip(){
 }
 renderDestChip();
 $("destClear").onclick=()=>{ chosenDest=null; setSet("copilote-dest","null"); renderDestChip(); };
-function getPos(){ return new Promise(res=>{ if(curPos&&Date.now()-(curPos.t||0)<30000) return res([curPos.lat,curPos.lng]);
-  if(!navigator.geolocation) return res(null);
-  navigator.geolocation.getCurrentPosition(p=>{ curPos={lat:p.coords.latitude,lng:p.coords.longitude,acc:p.coords.accuracy,speed:p.coords.speed,t:p.timestamp}; res([curPos.lat,curPos.lng]); },()=>res(null),{enableHighAccuracy:true,timeout:12000,maximumAge:20000}); }); }
+let gpsErr="";
+function gpsMsg(e){ return !e?"":e.code===1?"Localisation refusée. Ouvrez les réglages du téléphone : Applications → Chrome → Autorisations → Position → Autoriser. Activez aussi la « Position » du téléphone.":e.code===2?"Signal GPS introuvable. Activez la « Position » du téléphone et sortez à découvert.":"Le GPS met trop de temps à répondre. Sortez à découvert et réessayez."; }
+function getPos(){ return new Promise(res=>{
+  if(curPos&&Date.now()-(curPos.t||0)<30000) return res([curPos.lat,curPos.lng]);
+  if(!navigator.geolocation){ gpsErr="Ce téléphone ne donne pas sa position."; return res(null); }
+  const ok=p=>{ gpsErr=""; curPos={lat:p.coords.latitude,lng:p.coords.longitude,acc:p.coords.accuracy,speed:p.coords.speed,t:Date.now()}; res([curPos.lat,curPos.lng]); };
+  // d'abord précis, puis, en cas d'échec, position approximative (réseau)
+  navigator.geolocation.getCurrentPosition(ok,e=>{ if(e.code===1){ gpsErr=gpsMsg(e); return res(null); }
+    navigator.geolocation.getCurrentPosition(ok,e2=>{ gpsErr=gpsMsg(e2); res(null); },{enableHighAccuracy:false,timeout:15000,maximumAge:120000}); },
+    {enableHighAccuracy:true,timeout:15000,maximumAge:20000}); }); }
 function renderList(el,list,recent){
   el.innerHTML=list.map((r,i)=>`<button type="button" class="ritem" data-i="${i}"><b>${escH(r.title)}</b><small>${escH(r.sub||"")}</small></button>`).join("");
   el.onclick=e=>{ const b=e.target.closest("[data-i]"); if(b) preview(list[+b.dataset.i]); };
@@ -872,16 +879,43 @@ function navSay(t,tries){ tries=tries||0;
   speak(t); lastSpeak=performance.now();
 }
 Nav.setSay(navSay);
+let navWatch=null, navTick=null, lastFixAt=0;
+function startNavGps(){
+  stopNavGps(); if(!navigator.geolocation) return;
+  navWatch=navigator.geolocation.watchPosition(p=>{
+    const c={lat:p.coords.latitude,lng:p.coords.longitude,acc:p.coords.accuracy,speed:p.coords.speed,t:Date.now()};
+    if((c.speed==null||isNaN(c.speed))&&curPos&&curPos.t){ const dt=(c.t-curPos.t)/1000; if(dt>0.5&&dt<15){ const R=6371000,r=x=>x*Math.PI/180,dLa=r(c.lat-curPos.lat),dLo=r(c.lng-curPos.lng),h=Math.sin(dLa/2)**2+Math.cos(r(curPos.lat))*Math.cos(r(c.lat))*Math.sin(dLo/2)**2; c.speed=2*R*Math.asin(Math.sqrt(h))/dt; } }
+    if(!TRIP) curPos=c;              // sinon, la position est déjà mise à jour par le suivi du trajet
+    lastFixAt=Date.now(); gpsErr=""; navOnPos(c);
+  },e=>{ gpsErr=gpsMsg(e); showGpsState(); },{enableHighAccuracy:true,maximumAge:2000,timeout:20000});
+  // toutes les 2 s : mise à jour du guidage même si le GPS ne renvoie rien de neuf
+  navTick=setInterval(()=>{ if(curPos&&Nav.active&&running) Nav.update(curPos,curPos.speed); showGpsState(); },2000);
+}
+function stopNavGps(){ if(navWatch!==null){ try{navigator.geolocation.clearWatch(navWatch);}catch(e){} navWatch=null; } clearInterval(navTick); navTick=null; }
+function showGpsState(){
+  if(!Nav.active) return;
+  const age=lastFixAt?Math.round((Date.now()-lastFixAt)/1000):null;
+  if(gpsErr){ $("navRem").textContent="⚠ "+gpsErr; return; }
+  if(age==null||age>15){ $("navRem").textContent="📡 Recherche du signal GPS… (sortez à découvert)"; }
+}
 async function startGuidance(){
-  $("navBar").hidden=false; $("navDist").textContent="Calcul de l'itinéraire…"; $("navText").textContent=chosenDest.title; $("navRem").textContent=""; $("navArrow").textContent="🧭";
+  $("navBar").hidden=false; $("navDist").textContent="Recherche de votre position…"; $("navText").textContent=chosenDest.title; $("navRem").textContent=""; $("navArrow").textContent="📡";
+  startNavGps();
   const from=await getPos();
-  if(!from){ $("navDist").textContent="Position GPS introuvable"; $("navText").textContent="Autorisez la localisation pour le guidage."; return; }
+  if(!from){ $("navDist").textContent="Position GPS introuvable"; $("navText").textContent=gpsErr||"Autorisez la localisation pour le guidage.";
+    // on réessaie tout seul dès que le GPS répond
+    const retry=setInterval(async()=>{ if(!running||!chosenDest){ clearInterval(retry); return; } if(curPos){ clearInterval(retry); startGuidance(); } },3000);
+    return; }
+  $("navDist").textContent="Calcul de l'itinéraire…"; $("navArrow").textContent="🧭";
   try{ await Nav.start(chosenDest,from); }
-  catch(x){ $("navDist").textContent="Guidage indisponible"; $("navText").textContent=navigator.onLine?x.message:"Pas de connexion internet."; return; }
+  catch(x){ $("navDist").textContent="Guidage indisponible"; $("navText").textContent=navigator.onLine?x.message:"Pas de connexion internet. Le guidage a besoin d'internet."; return; }
+  lastFixAt=lastFixAt||Date.now();
   $("navMap").hidden=false;
   if(!navMap){ navMap=Nav.makeMap($("navMap"),{dragging:false,touchZoom:false,scrollWheelZoom:false,doubleClickZoom:false,boxZoom:false,keyboard:false}); }
   setTimeout(()=>navMap.invalidateSize(),60);
   drawNavRoute(); navMap.setView(from,16);
+  // première consigne affichée tout de suite, sans attendre que le véhicule bouge
+  Nav.update({lat:from[0],lng:from[1],acc:curPos?curPos.acc:20},curPos?curPos.speed:0);
 }
 function drawNavRoute(){ const st=Nav.state; if(!navMap||!st) return;
   if(navLine) navLine.remove(); navLine=L.polyline(st.rt.line,{color:"#4f8cff",weight:7,opacity:.95}).addTo(navMap);

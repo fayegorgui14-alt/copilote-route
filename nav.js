@@ -106,8 +106,13 @@
   let sayFn = t => {};
   function say(t) { try { sayFn(t); } catch (e) {} }
 
+  let busy = false;
   async function update(pos, speedMs) {
-    if (!state || state.arrived || !pos) return;
+    if (!state || state.arrived || !pos || busy) return;
+    busy = true;
+    try { await doUpdate(pos, speedMs); } finally { busy = false; }
+  }
+  async function doUpdate(pos, speedMs) {
     const p = [pos.lat, pos.lng], rt = state.rt;
     // arrivée
     if (hav(p, [state.dest.lat, state.dest.lng]) < 30) { state.arrived = true; say("Vous êtes arrivé à destination."); emit(); return; }
