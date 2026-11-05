@@ -1,5 +1,5 @@
-const CACHE="copilote-v19";
-const FILES=["./","index.html","manifest.webmanifest","icon-192.png","icon-512.png","lib/tf.min.js","lib/coco-ssd.min.js","lib/supabase.js","lib/591.supabase.js","config.js","account.js","recorder.js","nav.js","lib/leaflet/leaflet.js","lib/leaflet/leaflet.css","model/model.json","model/group1-shard1of5.wasm","model/group1-shard2of5.wasm","model/group1-shard3of5.wasm","model/group1-shard4of5.wasm","model/group1-shard5of5.wasm"];
+const CACHE="copilote-v20";
+const FILES=["./","index.html","manifest.webmanifest","icon-192.png","icon-512.png","lib/tf.min.js","lib/coco-ssd.min.js","lib/supabase.js","lib/591.supabase.js","config.js","account.js","recorder.js","nav.js","drowsy.js","lib/face/face-api.esm-nobundle.js","lib/face/tf-shim.js","lib/face/empty-shim.js","lib/face/model/tiny_face_detector_model-weights_manifest.json","lib/face/model/tiny_face_detector_model.bin","lib/face/model/face_landmark_68_tiny_model-weights_manifest.json","lib/face/model/face_landmark_68_tiny_model.bin","lib/leaflet/leaflet.js","lib/leaflet/leaflet.css","model/model.json","model/group1-shard1of5.wasm","model/group1-shard2of5.wasm","model/group1-shard3of5.wasm","model/group1-shard4of5.wasm","model/group1-shard5of5.wasm"];
 self.addEventListener("install",e=>{e.waitUntil(caches.open(CACHE).then(c=>c.addAll(FILES)));self.skipWaiting();});
 self.addEventListener("activate",e=>{e.waitUntil(caches.keys().then(k=>Promise.all(k.filter(x=>x!==CACHE).map(x=>caches.delete(x)))));self.clients.claim();});
 self.addEventListener("fetch",e=>{

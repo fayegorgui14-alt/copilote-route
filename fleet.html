@@ -82,7 +82,7 @@ select,input{font:inherit;padding:9px 12px;border-radius:9px;border:1px solid va
     <p class="muted" style="margin:0">Le score de prudence (sur 100) baisse avec le nombre d'alertes « Freinez », « Attention » et d'excès de vitesse par heure de conduite.</p>
     <div class="tablewrap"><table id="drivers"></table></div></div>
 
-  <div class="card"><h2>Dernières alertes « Freinez »</h2><div class="tablewrap"><table id="alerts"></table></div></div>
+  <div class="card"><h2>Dernières alertes « Freinez » et somnolence</h2><div class="tablewrap"><table id="alerts"></table></div></div>
 </section>
 </div>
 <div class="dialog" id="dlg" hidden><div class="card" id="dlgBody"></div></div>
@@ -93,7 +93,7 @@ select,input{font:inherit;padding:9px 12px;border-radius:9px;border:1px solid va
 <script>
 const A=window.Account, sb=A.sb, $=id=>document.getElementById(id);
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-const OBJ={car:"Voiture",truck:"Camion",bus:"Bus",motorcycle:"Moto",bicycle:"Vélo",person:"Piéton"};
+const OBJ={car:"Voiture",truck:"Camion",bus:"Bus",motorcycle:"Moto",bicycle:"Vélo",person:"Piéton",drowsy:"😴 Somnolence",speed:"Excès de vitesse"};
 let ME=null, CO=null, PEOPLE=[], TRIPS=[], ALERTS=[], ROWS=[];
 const dt=iso=>iso?new Date(iso).toLocaleString("fr-FR",{day:"2-digit",month:"short",hour:"2-digit",minute:"2-digit"}):"—";
 

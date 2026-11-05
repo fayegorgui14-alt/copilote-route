@@ -7,6 +7,7 @@
 <title>Copilote Route</title>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="stylesheet" href="lib/leaflet/leaflet.css">
+<script type="importmap">{"imports":{"@tensorflow/tfjs/dist/index.js":"./lib/face/tf-shim.js","@tensorflow/tfjs-backend-webgl/dist/index.js":"./lib/face/empty-shim.js","@tensorflow/tfjs-backend-wasm/dist/index.js":"./lib/face/empty-shim.js"}}</script>
 <link rel="icon" href="icon-192.png">
 <link rel="apple-touch-icon" href="icon-192.png">
 <style>
@@ -82,6 +83,15 @@ a.link{text-align:center}
 .navmap{position:absolute;right:max(12px,env(safe-area-inset-right,0px));bottom:calc(env(safe-area-inset-bottom,0px) + 84px);width:min(42vw,230px);height:min(42vw,230px);border-radius:14px;overflow:hidden;z-index:3;border:2px solid rgba(255,255,255,.7);box-shadow:0 4px 14px rgba(0,0,0,.5)}
 .navmap.big{width:calc(100vw - 24px);height:45vh}
 .navmap .leaflet-control-attribution{font-size:9px}
+.eye{font-size:1rem;padding:1px 6px;border-radius:8px;background:rgba(0,0,0,.35)}
+.eye.ok{background:#1f8a4c}.eye.warn{background:#a86a00}.eye.bad{background:#ff4d44}
+.drowsy{position:absolute;inset:0;z-index:8;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;text-align:center;padding:24px;background:rgba(255,140,0,.92);color:#111;animation:flash .45s infinite alternate}
+.drowsy b{font-size:2.4rem;line-height:1.1}
+.drowsy span{font-size:1.15rem;font-weight:700;max-width:320px}
+@keyframes flash{from{background:rgba(255,140,0,.95)}to{background:rgba(255,40,40,.95)}}
+@media (prefers-reduced-motion:reduce){.drowsy{animation:none}}
+.drive .controls{z-index:9}
+.dnote{position:absolute;left:12px;right:12px;bottom:calc(env(safe-area-inset-bottom,0px) + 84px);z-index:3;background:rgba(0,0,0,.8);color:#fff;border-radius:12px;padding:10px 12px;font-size:.9rem}
 .prep{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);background:rgba(0,0,0,.75);color:#fff;padding:18px 20px;border-radius:14px;display:flex;flex-direction:column;align-items:center;gap:8px;text-align:center;width:min(86%,340px);z-index:4}
 .prep span{font-size:.88rem;color:#cfd7df}
 .spinner{width:34px;height:34px;border-radius:50%;border:4px solid rgba(255,255,255,.25);border-top-color:#fff;animation:spin 1s linear infinite}
@@ -196,6 +206,10 @@ a.link{text-align:center}
     <label class="field" for="speedMax">Alerte d'excès de vitesse
       <select id="speedMax"><option value="0">Désactivée</option><option value="30">Au-dessus de 30 km/h</option><option value="50">Au-dessus de 50 km/h (ville)</option><option value="70">Au-dessus de 70 km/h</option><option value="90">Au-dessus de 90 km/h (route)</option><option value="110">Au-dessus de 110 km/h (autoroute)</option></select>
     </label>
+    <label class="switch" for="drowsyOn">Surveillance des yeux (somnolence)<input type="checkbox" id="drowsyOn"></label>
+    <p class="hint">La caméra avant surveille les yeux du chauffeur. S'ils restent fermés plus de 1,5 seconde, une alarme forte sonne. Tous les téléphones ne permettent pas d'utiliser les deux caméras en même temps : testez le vôtre.</p>
+    <button class="btn ghost" type="button" id="drowsyTest">Tester mon téléphone</button>
+    <p class="hint" id="drowsyTestRes" role="status"></p>
     <label class="switch" for="autoStart">Démarrer automatiquement à l'ouverture<input type="checkbox" id="autoStart"></label>
     <p class="hint">Avec « Modes et routines » de Samsung, Copilote peut s'ouvrir tout seul quand vous branchez le chargeur de la voiture. Il démarre alors après 5 secondes.</p>
     <div class="field" hidden>Langue de la voix
@@ -272,9 +286,11 @@ a.link{text-align:center}
 <section class="drive" id="drive" data-level="safe" hidden>
   <video id="vid" playsinline muted></video>
   <canvas id="cv"></canvas>
-  <div class="banner" role="status" aria-live="assertive"><div class="lamp"></div><b id="msg">Route dégagée</b><span class="rec" id="recDot" hidden>● REC</span><span class="spd" id="spd"></span><span class="fps" id="fps"></span></div>
+  <div class="banner" role="status" aria-live="assertive"><div class="lamp"></div><b id="msg">Route dégagée</b><span class="rec" id="recDot" hidden>● REC</span><span class="eye" id="eyeDot" hidden>👁</span><span class="spd" id="spd"></span><span class="fps" id="fps"></span></div>
   <div class="navbar" id="navBar" hidden><span class="navarrow" id="navArrow">⬆</span><span class="navtxt"><b id="navDist"></b><span id="navText"></span><small id="navRem"></small></span></div>
   <div class="navmap" id="navMap" hidden></div>
+  <div class="drowsy" id="drowsyAlarm" hidden><b>RÉVEILLEZ-VOUS !</b><span>Arrêtez-vous dès que possible pour vous reposer.</span></div>
+  <div class="dnote" id="drowsyNote" hidden></div>
   <div class="prep" id="prep" hidden><div class="spinner"></div><b>Préparation de la détection…</b><span>La première fois peut prendre jusqu'à 30 secondes. Ne quittez pas l'application.</span></div>
   <button class="soundbtn" id="soundBtn" type="button" hidden>🔊 Touchez ici pour activer le son</button>
   <div class="controls"><button class="mute" id="muteBtn">Couper le son</button><button class="stop" id="stopBtn">Arrêter</button></div>
@@ -288,6 +304,7 @@ a.link{text-align:center}
 <script src="recorder.js"></script>
 <script src="lib/leaflet/leaflet.js"></script>
 <script src="nav.js"></script>
+<script src="drowsy.js"></script>
 <script>
 /* ======== Voix : français (voix du téléphone) ou wolof (phrases enregistrées) ======== */
 const VOICE={
@@ -754,6 +771,7 @@ $("start").onclick=async()=>{
   }catch(e){ $("status").textContent="La caméra est refusée. Autorisez-la dans les réglages du navigateur, puis réessayez."; return; }
   vid.srcObject=stream; vid.loop=false; await vid.play().catch(()=>{});
   await enterDrive(true); endedDuringTrip=false;
+  if($("drowsyOn").checked) startDrowsy();
   try{ DashRec.start(stream,{video:vid,info:()=>({speed:curKmh(),lat:curPos?curPos.lat:null,lng:curPos?curPos.lng:null})}); }catch(e){}
   checkSound();
   const k=endKey();
@@ -762,7 +780,7 @@ $("start").onclick=async()=>{
 };
 $("pickBtn").onclick=async()=>{ if(await gate()) $("pick").click(); };
 $("pick").onchange=async e=>{const f=e.target.files[0]; if(!f) return; vid.srcObject=null; vid.src=URL.createObjectURL(f); vid.loop=true; await vid.play().catch(()=>{}); await enterDrive();};
-$("stopBtn").onclick=()=>{ $("prep").hidden=true; try{ Nav.stop(); }catch(e){} stopNavGps(); $("navBar").hidden=true; $("navMap").hidden=true;
+$("stopBtn").onclick=()=>{ $("prep").hidden=true; try{ Drowsy.stop(); }catch(e){} stopDrowsyAlarm(); $("eyeDot").hidden=true; $("drowsyNote").hidden=true; try{ Nav.stop(); }catch(e){} stopNavGps(); $("navBar").hidden=true; $("navMap").hidden=true;
   running=false; endTrip(); try{ DashRec.stop(); }catch(e){}
   // laisse le temps au dernier morceau de vidéo d'être enregistré avant de couper la caméra
   const st=stream; stream=null; if(st) setTimeout(()=>st.getTracks().forEach(t=>t.stop()),800);
@@ -813,6 +831,43 @@ function maybeAutoStart(){
 }
 $("cdCancel").onclick=()=>{ clearInterval(cdTimer); $("countdown").hidden=true; };
 document.addEventListener("visibilitychange",()=>{ if(document.visibilityState==="visible") setTimeout(maybeAutoStart,800); });
+
+/* ======== Surveillance des yeux ======== */
+$("drowsyOn").checked=getSet("copilote-drowsy","0")==="1";
+$("drowsyOn").onchange=()=>{ setSet("copilote-drowsy",$("drowsyOn").checked?"1":"0"); if($("drowsyOn").checked) try{ Drowsy.load(); }catch(e){} };
+if($("drowsyOn").checked) setTimeout(()=>{ try{ Drowsy.load(); }catch(e){} },4000);
+const DROWSY_NO="Votre téléphone ne permet pas d'utiliser les deux caméras en même temps. La surveillance des yeux n'est pas possible sur ce téléphone : il faudrait un 2ᵉ téléphone ou le boîtier Copilote.";
+$("drowsyTest").onclick=async()=>{ const b=$("drowsyTest"), out=$("drowsyTestRes"); b.disabled=true; out.className="hint"; out.textContent="Test en cours… autorisez la caméra si le téléphone le demande.";
+  const r=await Drowsy.testPhone(); b.disabled=false;
+  if(r.ok){ out.className="ok"; out.textContent="✅ Votre téléphone peut utiliser les deux caméras en même temps. Vous pouvez activer la surveillance des yeux."; setSet("copilote-dual","1"); }
+  else { out.className="error"; out.textContent="❌ "+DROWSY_NO; setSet("copilote-dual","0"); } };
+let drowsyBeep=null, drowsySpeak=0;
+function startDrowsyAlarm(){
+  $("drowsyAlarm").hidden=false; logAlert("danger",{class:"drowsy",ttc:Infinity}); try{ DashRec.markDanger("drowsy"); }catch(e){}
+  const ring=()=>{ const was=muted; muted=false; beep(2000); setTimeout(()=>{ const w2=muted; muted=false; beep(1500); muted=w2; },180); muted=was; try{navigator.vibrate&&navigator.vibrate([300,100,300]);}catch(e){}
+    const now=performance.now(); if(now-drowsySpeak>6000){ drowsySpeak=now; const was=muted; muted=false; speak("Réveillez-vous ! Arrêtez-vous pour vous reposer."); muted=was; lastSpeak=now; } };
+  ring(); clearInterval(drowsyBeep); drowsyBeep=setInterval(ring,700);
+}
+function stopDrowsyAlarm(){ clearInterval(drowsyBeep); drowsyBeep=null; $("drowsyAlarm").hidden=true; }
+Drowsy.setHooks({
+  onAlarm:()=>startDrowsyAlarm(),
+  onAlarmEnd:()=>stopDrowsyAlarm(),
+  onState:st=>{ const d=$("eyeDot"); if(!running){ d.hidden=true; return; }
+    d.hidden=!(st.status==="watching"||st.status==="learning"||st.status==="noface"||st.status==="starting");
+    d.className="eye "+(st.alarm?"bad":st.status==="watching"?"ok":"warn");
+    d.title=st.status==="noface"?"Visage non visible":st.status==="learning"?"Apprentissage de vos yeux…":"Yeux surveillés"; }
+});
+async function startDrowsy(){
+  if(getSet("copilote-dual","")==="0"){ showDNote(DROWSY_NO); return; }
+  const r=await Drowsy.start(stream,vid);
+  if(r&&r.ok){ setSet("copilote-dual","1"); showDNote("👁 Surveillance des yeux active. Gardez le visage visible par la caméra avant."); return; }
+  if(r&&r.reason){ setSet("copilote-dual","0"); showDNote(DROWSY_NO); }
+  // la caméra de la route a été coupée par l'essai : on la rouvre
+  if(r&&r.roadKilled&&running){ try{ const ns=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:"environment"},width:{ideal:1280},height:{ideal:720}},audio:false});
+      try{ stream&&stream.getTracks().forEach(t=>t.stop()); }catch(e){} stream=ns; vid.srcObject=ns; await vid.play().catch(()=>{});
+      try{ DashRec.start(stream,{video:vid,info:()=>({speed:curKmh(),lat:curPos?curPos.lat:null,lng:curPos?curPos.lng:null})}); }catch(e){} }catch(e){} }
+}
+let dnoteT=null; function showDNote(t){ const n=$("drowsyNote"); n.textContent=t; n.hidden=false; clearTimeout(dnoteT); dnoteT=setTimeout(()=>n.hidden=true,7000); }
 
 /* ======== Navigation ======== */
 let chosenDest=null, destMap=null, destLayer=null, navMap=null, navMeMk=null, navLine=null, navDestMk=null, previewPos=null;

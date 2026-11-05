@@ -27,6 +27,9 @@ GPS incrusté sur les vidéos, alerte d'excès de vitesse, démarrage automatiqu
 - `nav.js` : navigation (Leaflet dans `lib/leaflet/`, recherche Nominatim, itinéraire OSRM, guidage vocal FR).
   Serveurs réglables dans config.js (NAV_TILES, NAV_GEOCODER, NAV_ROUTER). Par défaut : serveurs publics gratuits,
   réservés aux essais → passer à un fournisseur (MapTiler, OpenRouteService, Geoapify…) avant de nombreux clients.
+- `drowsy.js` : surveillance des yeux (somnolence) avec la caméra avant du même téléphone — face-api (`lib/face/`,
+  modèles tiny), relié à window.tf via une import map (`lib/face/tf-shim.js`). Seuil : yeux < 72 % de l'ouverture
+  habituelle pendant 1,5 s. Ne marche que si le téléphone accepte 2 caméras en même temps (test dans les réglages).
 - `sw.js` : fonctionnement hors ligne — incrémenter `CACHE` (copilote-vN) à chaque publication
 
 ## Modèle économique
