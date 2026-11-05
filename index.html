@@ -172,6 +172,7 @@ a.link{text-align:center}
     </form>
   </section>
   <button class="btn ghost" id="payBack">Retour</button>
+  <a class="btn ghost" id="adminLink2" href="admin.html" hidden>Ouvrir le back-office (administrateur)</a>
   <button class="link" id="logout2">Se déconnecter</button>
 </main>
 
@@ -392,10 +393,12 @@ function renderChip(){
   const c=document.getElementById("chip"); if(!ACCESS){c.hidden=true;return;}
   c.hidden=false; c.className="chip "+ACCESS.status;
   const d=ACCESS.ends_at?A.daysLeft(ACCESS.ends_at):0;
+  if(ACCESS.role==="admin"){ c.className="chip active"; c.textContent="Administrateur · accès illimité"; return; }
   if(ACCESS.company&&ACCESS.status==="active"){ c.textContent="Couvert par "+ACCESS.company; return; }
   c.textContent={trial:`Essai gratuit : ${d} jour${d>1?"s":""} restant${d>1?"s":""}`,active:`Abonné jusqu'au ${A.fmtDate(ACCESS.ends_at)}`,expired:"Abonnement terminé · Payer",blocked:"Compte bloqué",unknown:"Compte introuvable"}[ACCESS.status]||"Mon abonnement";
 }
-function canDrive(){ return ACCESS&&(ACCESS.status==="trial"||ACCESS.status==="active"); }
+// L'administrateur (propriétaire de Copilote) n'est jamais bloqué par l'abonnement
+function canDrive(){ return ACCESS&&(ACCESS.role==="admin"&&ACCESS.status!=="unknown"||ACCESS.status==="trial"||ACCESS.status==="active"); }
 
 function renderPay(){
   const a=ACCESS||{}; const st=document.getElementById("payState");
@@ -466,6 +469,7 @@ function renderLinks(){
   // Visible uniquement pour vous (administrateur) et pour les responsables de flotte ; la page elle-même revérifie le rôle.
   document.getElementById("adminLink").hidden=!(ACCESS&&ACCESS.role==="admin");
   document.getElementById("fleetLink").hidden=!(ACCESS&&ACCESS.company_role==="manager");
+  document.getElementById("adminLink2").hidden=!(ACCESS&&ACCESS.role==="admin");
 }
 async function refreshAccess(){ ACCESS=await A.access(); renderChip(); renderEndSoon(); renderLinks(); return ACCESS; }
 
